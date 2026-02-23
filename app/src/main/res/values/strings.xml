@@ -8,6 +8,18 @@
     <string name="button_stop">Stop Mock</string>
     <string name="button_dev_options">Open Developer Options</string>
     <string name="button_location_settings">Open Location Settings</string>
+    <string name="route_name_hint">Route name</string>
+    <string name="button_save_route">Save Route</string>
+    <string name="button_clear_route">Clear</string>
+    <string name="button_rename_route">Rename Selected</string>
+    <string name="title_route_library">Route Library</string>
+    <string name="button_delete_route">Delete Selected</string>
+    <string name="error_route_name">Please enter a route name.</string>
+    <string name="error_route_points">Please add at least 2 points.</string>
+    <string name="error_route_select">Please select a route.</string>
+    <string name="button_undo_point">Undo Last Point</string>
+    <string name="hint_remove_point">Tip: Long-press the map to remove the nearest point.</string>
+    <string name="label_point_count">Points: %1$d</string>
     <string name="instructions">
         1. Enable Developer Options\n
         2. Select this app as the Mock Location app\n
