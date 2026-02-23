@@ -1,6 +1,6 @@
 # 隱私政策 Privacy Policy
 
-**生效日期 / Effective Date:** YYYY-MM-DD
+**生效日期 / Effective Date:** 2026-02-24
 
 ---
 
@@ -29,7 +29,7 @@
 - 本應用程式不針對 13 歲以下兒童設計或蒐集資料。
 
 ### 7. 聯絡我們
-- 若你對本政策有任何問題，請聯絡：your@email.com
+- 若你對本政策有任何問題，請聯絡：ouranoscat@gmail.com
 
 ---
 
@@ -58,4 +58,4 @@
 - This app is not intended for children under 13 and does not knowingly collect data from them.
 
 ### 7. Contact Us
-- If you have any questions about this policy, please contact: your@email.com
+- If you have any questions about this policy, please contact: ouranoscat@gmail.com

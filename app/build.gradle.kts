@@ -4,6 +4,12 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
+kapt {
+    arguments {
+        arg("room.schemaLocation", "$projectDir/schemas")
+    }
+}
+
 android {
     namespace = "com.potato.couch"
     compileSdk = 34
@@ -53,7 +59,7 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
-    implementation("org.maplibre.gl:android-sdk:10.2.1")
+    implementation("org.maplibre.gl:android-sdk:11.8.1")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

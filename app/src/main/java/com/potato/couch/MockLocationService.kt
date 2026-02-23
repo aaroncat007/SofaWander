@@ -19,7 +19,11 @@ import com.potato.couch.data.GpsEventEntity
 import com.potato.couch.data.RouteJson
 import com.potato.couch.data.RoutePoint
 import com.potato.couch.data.RunHistoryEntity
-import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 class MockLocationService : Service() {
 
@@ -52,9 +56,9 @@ class MockLocationService : Service() {
     private var smoothedLat: Double? = null
     private var smoothedLng: Double? = null
     private var bouncePhase = 0.0
-    private var runId: Long = 0
+    @Volatile private var runId: Long = 0
     private val db by lazy { AppDatabase.getInstance(this) }
-    private val dbExecutor = Executors.newSingleThreadExecutor()
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
@@ -143,6 +147,7 @@ class MockLocationService : Service() {
         finishRunHistory(RUN_STATUS_STOPPED)
         setRunningFlag(false)
         broadcastStatus(getString(R.string.status_idle), "")
+        ioScope.cancel()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -440,7 +445,7 @@ class MockLocationService : Service() {
             startedAt = now,
             status = RUN_STATUS_RUNNING
         )
-        dbExecutor.execute {
+        ioScope.launch {
             runId = db.runHistoryDao().insert(entity)
         }
     }
@@ -450,7 +455,7 @@ class MockLocationService : Service() {
         val end = System.currentTimeMillis()
         val id = runId
         runId = 0
-        dbExecutor.execute {
+        ioScope.launch {
             db.runHistoryDao().updateEnd(id, end, status)
         }
     }
@@ -465,7 +470,7 @@ class MockLocationService : Service() {
             accuracy = location.accuracy,
             speedMps = currentSegmentSpeed
         )
-        dbExecutor.execute {
+        ioScope.launch {
             db.gpsEventDao().insert(event)
         }
     }

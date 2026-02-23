@@ -23,6 +23,12 @@
 
 ## 里程碑與任務
 
+## 進度更新（2026-02-23）
+- 修正 MapLibre 11 `Point` 使用方式（改用 `point.latitude/longitude`）
+- 修正 `MockLocationService` 中 Room suspend 呼叫（改用 `CoroutineScope(Dispatchers.IO)`）
+- 設定 Room `schemaLocation` 並建立 `app/schemas/` 目錄
+- `assembleDebug` 已可成功編譯（無 Room schema 警告）
+
 ### M1：專案基底與 Mock Location
 目標：跑通 Mock Location 與背景服務
 - 建立專案結構（MVVM + 分層）
@@ -85,7 +91,3 @@
   - 對策：偵測開發者選項與 mock 設定，提供一步一步引導
 - 上架合規
   - 對策：隱私政策與功能描述避免誤導
-
-## 下一步
-- 若同意此計畫，先開始 M1。
-- 我可以立即生成 M1 的專案骨架與初始程式碼結構。

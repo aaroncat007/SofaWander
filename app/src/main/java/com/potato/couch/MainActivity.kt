@@ -74,11 +74,11 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val buffer = ByteArray(512)
                     val read = stream.read(buffer)
-                    val textSample = if (read > 0) String(buffer, 0, read, Charsets.UTF_8) else \"\"
+                    val textSample = if (read > 0) String(buffer, 0, read, Charsets.UTF_8) else ""
                     stream.reset()
                     val points = when {
-                        textSample.contains(\"<gpx\", ignoreCase = true) -> RouteFileIO.parseGpx(stream)
-                        textSample.contains(\"<kml\", ignoreCase = true) -> RouteFileIO.parseKml(stream)
+                        textSample.contains("<gpx", ignoreCase = true) -> RouteFileIO.parseGpx(stream)
+                        textSample.contains("<kml", ignoreCase = true) -> RouteFileIO.parseKml(stream)
                         else -> null
                     }
                     if (points == null) {
@@ -101,7 +101,7 @@ class MainActivity : AppCompatActivity() {
         }
 
     private val createGpxLauncher =
-        registerForActivityResult(ActivityResultContracts.CreateDocument(\"application/gpx+xml\")) { uri ->
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { uri ->
             if (uri == null) return@registerForActivityResult
             if (routePoints.size < 2) {
                 binding.textError.setText(R.string.error_route_export_points)
@@ -113,7 +113,7 @@ class MainActivity : AppCompatActivity() {
             }
             output.use { stream ->
                 try {
-                    val name = binding.editRouteName.text.toString().trim().ifEmpty { \"Route\" }
+                    val name = binding.editRouteName.text.toString().trim().ifEmpty { "Route" }
                     RouteFileIO.writeGpx(stream, name, routePoints)
                 } catch (_: Exception) {
                     binding.textError.setText(R.string.error_export_failed)
@@ -122,7 +122,7 @@ class MainActivity : AppCompatActivity() {
         }
 
     private val createKmlLauncher =
-        registerForActivityResult(ActivityResultContracts.CreateDocument(\"application/vnd.google-earth.kml+xml\")) { uri ->
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.google-earth.kml+xml")) { uri ->
             if (uri == null) return@registerForActivityResult
             if (routePoints.size < 2) {
                 binding.textError.setText(R.string.error_route_export_points)
@@ -134,7 +134,7 @@ class MainActivity : AppCompatActivity() {
             }
             output.use { stream ->
                 try {
-                    val name = binding.editRouteName.text.toString().trim().ifEmpty { \"Route\" }
+                    val name = binding.editRouteName.text.toString().trim().ifEmpty { "Route" }
                     RouteFileIO.writeKml(stream, name, routePoints)
                 } catch (_: Exception) {
                     binding.textError.setText(R.string.error_export_failed)
@@ -315,23 +315,23 @@ class MainActivity : AppCompatActivity() {
         binding.buttonImportRoute.setOnClickListener {
             openDocumentLauncher.launch(
                 arrayOf(
-                    \"application/gpx+xml\",
-                    \"application/vnd.google-earth.kml+xml\",
-                    \"application/xml\",
-                    \"text/xml\",
-                    \"*/*\"
+                    "application/gpx+xml",
+                    "application/vnd.google-earth.kml+xml",
+                    "application/xml",
+                    "text/xml",
+                    "*/*"
                 )
             )
         }
 
         binding.buttonExportRoute.setOnClickListener {
-            val name = binding.editRouteName.text.toString().trim().ifEmpty { \"route\" }
-            createGpxLauncher.launch(\"${name}.gpx\")
+            val name = binding.editRouteName.text.toString().trim().ifEmpty { "route" }
+            createGpxLauncher.launch("${name}.gpx")
         }
 
         binding.buttonExportRouteKml.setOnClickListener {
-            val name = binding.editRouteName.text.toString().trim().ifEmpty { \"route\" }
-            createKmlLauncher.launch(\"${name}.kml\")
+            val name = binding.editRouteName.text.toString().trim().ifEmpty { "route" }
+            createKmlLauncher.launch("${name}.kml")
         }
 
         binding.buttonDeleteRoute.setOnClickListener {
@@ -372,16 +372,16 @@ class MainActivity : AppCompatActivity() {
             }
 
             map.addOnMapClickListener { point ->
-                routePoints.add(RoutePoint(point.latitude(), point.longitude()))
-                lastTappedPoint = RoutePoint(point.latitude(), point.longitude())
+                routePoints.add(RoutePoint(point.latitude, point.longitude))
+                lastTappedPoint = RoutePoint(point.latitude, point.longitude)
                 updateRouteLine()
                 updatePointCount()
                 true
             }
 
             map.addOnMapLongClickListener { point ->
-                if (!tryStartDrag(point.latitude(), point.longitude())) {
-                    removeNearestPoint(point.latitude(), point.longitude())
+                if (!tryStartDrag(point.latitude, point.longitude)) {
+                    removeNearestPoint(point.latitude, point.longitude)
                 }
                 true
             }
