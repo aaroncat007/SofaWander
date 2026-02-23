@@ -14,6 +14,8 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
+import com.potato.couch.data.RouteJson
+import com.potato.couch.data.RoutePoint
 
 class MockLocationService : Service() {
 
@@ -21,22 +23,95 @@ class MockLocationService : Service() {
     private var handler: Handler? = null
     private var locationManager: LocationManager? = null
     private var hasReportedError = false
+    private val routePoints = mutableListOf<RoutePoint>()
+    private var currentSegmentIndex = 0
+    private var distanceOnSegment = 0.0
+    private var speedMetersPerSecond = SPEED_WALK
+    private var speedMinMetersPerSecond = 0.0
+    private var speedMaxMetersPerSecond = 0.0
+    private var pauseMinSeconds = 0.0
+    private var pauseMaxSeconds = 0.0
+    private var currentSegmentSpeed = SPEED_WALK
+    private var lastUpdateRealtime = 0L
+    private var isPaused = false
+    private var pauseUntilRealtime = 0L
+    private var isRandomSpeed = false
+    private var isLoopEnabled = false
+    private var isRoundTripEnabled = false
+    private var isForward = true
 
     override fun onCreate() {
         super.onCreate()
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        setRunningFlag(true)
         startInForeground()
-        startMockLoop()
+        startRouteLoop()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_START_ROUTE -> {
+                val json = intent.getStringExtra(EXTRA_ROUTE_JSON).orEmpty()
+                val speedMode = intent.getIntExtra(EXTRA_SPEED_MODE, 0)
+                val speedMinKmh = intent.getDoubleExtra(EXTRA_SPEED_MIN_KMH, 0.0)
+                val speedMaxKmh = intent.getDoubleExtra(EXTRA_SPEED_MAX_KMH, 0.0)
+                val pauseMin = intent.getDoubleExtra(EXTRA_PAUSE_MIN_SEC, 0.0)
+                val pauseMax = intent.getDoubleExtra(EXTRA_PAUSE_MAX_SEC, 0.0)
+                isRandomSpeed = intent.getBooleanExtra(EXTRA_RANDOM_SPEED, false)
+                isLoopEnabled = intent.getBooleanExtra(EXTRA_LOOP_ENABLED, false)
+                isRoundTripEnabled = intent.getBooleanExtra(EXTRA_ROUNDTRIP_ENABLED, false)
+                val points = RouteJson.fromJson(json)
+                if (points.size >= 2) {
+                    routePoints.clear()
+                    routePoints.addAll(points)
+                    currentSegmentIndex = 0
+                    distanceOnSegment = 0.0
+                    isForward = true
+                    pauseUntilRealtime = 0L
+                    pauseMinSeconds = pauseMin.coerceAtLeast(0.0)
+                    pauseMaxSeconds = pauseMax.coerceAtLeast(0.0)
+                    if (pauseMaxSeconds < pauseMinSeconds) {
+                        pauseMaxSeconds = pauseMinSeconds
+                    }
+                    speedMetersPerSecond = when (speedMode) {
+                        SPEED_MODE_JOG -> SPEED_JOG
+                        SPEED_MODE_DRIVE -> SPEED_DRIVE
+                        else -> SPEED_WALK
+                    }
+                    speedMinMetersPerSecond = kmhToMps(speedMinKmh)
+                    speedMaxMetersPerSecond = kmhToMps(speedMaxKmh)
+                    if (speedMaxMetersPerSecond < speedMinMetersPerSecond) {
+                        speedMaxMetersPerSecond = speedMinMetersPerSecond
+                    }
+                    currentSegmentSpeed = pickSegmentSpeed()
+                    isPaused = false
+                    lastUpdateRealtime = SystemClock.elapsedRealtime()
+                    setRunningFlag(true)
+                    broadcastStatus(getString(R.string.status_running), "")
+                }
+            }
+            ACTION_PAUSE_ROUTE -> {
+                isPaused = !isPaused
+                broadcastStatus(
+                    if (isPaused) getString(R.string.status_paused) else getString(R.string.status_running),
+                    ""
+                )
+            }
+            ACTION_STOP_ROUTE -> {
+                routePoints.clear()
+                currentSegmentIndex = 0
+                distanceOnSegment = 0.0
+                isPaused = false
+                setRunningFlag(false)
+                broadcastStatus(getString(R.string.status_idle), "")
+                stopSelf()
+            }
+        }
         return START_STICKY
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        stopMockLoop()
+        stopRouteLoop()
         removeTestProvider()
         setRunningFlag(false)
         broadcastStatus(getString(R.string.status_idle), "")
@@ -66,10 +141,9 @@ class MockLocationService : Service() {
             .build()
 
         startForeground(1001, notification)
-        broadcastStatus(getString(R.string.status_running), "")
     }
 
-    private fun startMockLoop() {
+    private fun startRouteLoop() {
         if (handlerThread != null) return
 
         ensureTestProvider()
@@ -79,13 +153,13 @@ class MockLocationService : Service() {
 
         handler?.post(object : Runnable {
             override fun run() {
-                pushMockLocation(25.0330, 121.5654) // Placeholder: Taipei 101
-                handler?.postDelayed(this, 1000L)
+                updatePlayback()
+                handler?.postDelayed(this, UPDATE_INTERVAL_MS)
             }
         })
     }
 
-    private fun stopMockLoop() {
+    private fun stopRouteLoop() {
         handler?.removeCallbacksAndMessages(null)
         handlerThread?.quitSafely()
         handlerThread = null
@@ -149,6 +223,129 @@ class MockLocationService : Service() {
         }
     }
 
+    private fun updatePlayback() {
+        if (routePoints.size < 2) return
+        if (isPaused) {
+            lastUpdateRealtime = SystemClock.elapsedRealtime()
+            return
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        if (pauseUntilRealtime > now) {
+            lastUpdateRealtime = now
+            return
+        }
+
+        val dtSeconds = (now - lastUpdateRealtime) / 1000.0
+        lastUpdateRealtime = now
+        if (dtSeconds <= 0) return
+
+        var remainingMove = currentSegmentSpeed * dtSeconds
+
+        while (remainingMove > 0) {
+            val nextIndex = nextSegmentIndex() ?: break
+            val start = routePoints[currentSegmentIndex]
+            val end = routePoints[nextIndex]
+            val segmentLength = haversineMeters(
+                start.latitude, start.longitude,
+                end.latitude, end.longitude
+            )
+
+            val available = segmentLength - distanceOnSegment
+            if (available <= 0) {
+                currentSegmentIndex = nextIndex
+                distanceOnSegment = 0.0
+                maybePause()
+                currentSegmentSpeed = pickSegmentSpeed()
+                continue
+            }
+
+            if (remainingMove < available) {
+                distanceOnSegment += remainingMove
+                val fraction = distanceOnSegment / segmentLength
+                val lat = start.latitude + (end.latitude - start.latitude) * fraction
+                val lng = start.longitude + (end.longitude - start.longitude) * fraction
+                pushMockLocation(lat, lng)
+                return
+            }
+
+            remainingMove -= available
+            currentSegmentIndex = nextIndex
+            distanceOnSegment = 0.0
+            maybePause()
+            currentSegmentSpeed = pickSegmentSpeed()
+        }
+
+        handleRouteCompletion()
+    }
+
+    private fun nextSegmentIndex(): Int? {
+        return if (isForward) {
+            if (currentSegmentIndex >= routePoints.lastIndex) null else currentSegmentIndex + 1
+        } else {
+            if (currentSegmentIndex <= 0) null else currentSegmentIndex - 1
+        }
+    }
+
+    private fun handleRouteCompletion() {
+        val lastIndex = if (isForward) routePoints.lastIndex else 0
+        val last = routePoints[lastIndex]
+        pushMockLocation(last.latitude, last.longitude)
+
+        if (isRoundTripEnabled) {
+            isForward = !isForward
+            distanceOnSegment = 0.0
+            currentSegmentSpeed = pickSegmentSpeed()
+            return
+        }
+
+        if (isLoopEnabled) {
+            currentSegmentIndex = 0
+            distanceOnSegment = 0.0
+            currentSegmentSpeed = pickSegmentSpeed()
+            return
+        }
+
+        broadcastStatus(getString(R.string.status_idle), "")
+        setRunningFlag(false)
+        stopSelf()
+    }
+
+    private fun maybePause() {
+        if (pauseMaxSeconds <= 0.0) return
+        val duration = randomBetween(pauseMinSeconds, pauseMaxSeconds)
+        if (duration <= 0.0) return
+        pauseUntilRealtime = SystemClock.elapsedRealtime() + (duration * 1000).toLong()
+    }
+
+    private fun pickSegmentSpeed(): Double {
+        if (!isRandomSpeed) return speedMetersPerSecond
+        if (speedMaxMetersPerSecond <= 0.0) return speedMetersPerSecond
+        val min = if (speedMinMetersPerSecond > 0.0) speedMinMetersPerSecond else speedMetersPerSecond
+        val max = if (speedMaxMetersPerSecond > 0.0) speedMaxMetersPerSecond else speedMetersPerSecond
+        return randomBetween(min, max)
+    }
+
+    private fun randomBetween(min: Double, max: Double): Double {
+        if (max <= min) return min
+        return min + Math.random() * (max - min)
+    }
+
+    private fun kmhToMps(kmh: Double): Double {
+        return kmh * 1000.0 / 3600.0
+    }
+
+    private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return r * c
+    }
+
     private fun reportMockAppError() {
         if (hasReportedError) return
         hasReportedError = true
@@ -175,7 +372,25 @@ class MockLocationService : Service() {
         const val ACTION_MOCK_STATUS = "com.potato.couch.MOCK_STATUS"
         const val EXTRA_STATUS = "extra_status"
         const val EXTRA_MESSAGE = "extra_message"
+        const val ACTION_START_ROUTE = "com.potato.couch.ACTION_START_ROUTE"
+        const val ACTION_PAUSE_ROUTE = "com.potato.couch.ACTION_PAUSE_ROUTE"
+        const val ACTION_STOP_ROUTE = "com.potato.couch.ACTION_STOP_ROUTE"
+        const val EXTRA_ROUTE_JSON = "extra_route_json"
+        const val EXTRA_SPEED_MODE = "extra_speed_mode"
+        const val EXTRA_SPEED_MIN_KMH = "extra_speed_min_kmh"
+        const val EXTRA_SPEED_MAX_KMH = "extra_speed_max_kmh"
+        const val EXTRA_PAUSE_MIN_SEC = "extra_pause_min_sec"
+        const val EXTRA_PAUSE_MAX_SEC = "extra_pause_max_sec"
+        const val EXTRA_RANDOM_SPEED = "extra_random_speed"
+        const val EXTRA_LOOP_ENABLED = "extra_loop_enabled"
+        const val EXTRA_ROUNDTRIP_ENABLED = "extra_roundtrip_enabled"
         private const val PREFS_NAME = "mock_prefs"
         private const val PREF_KEY_RUNNING = "mock_service_running"
+        private const val UPDATE_INTERVAL_MS = 1000L
+        private const val SPEED_MODE_JOG = 1
+        private const val SPEED_MODE_DRIVE = 2
+        private const val SPEED_WALK = 1.4
+        private const val SPEED_JOG = 2.8
+        private const val SPEED_DRIVE = 13.9
     }
 }

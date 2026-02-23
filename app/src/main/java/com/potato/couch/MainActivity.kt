@@ -92,10 +92,18 @@ class MainActivity : AppCompatActivity() {
             ensurePermissionsAndStart()
         }
 
+        binding.buttonPause.setOnClickListener {
+            pauseRoutePlayback()
+        }
+
         binding.buttonStop.setOnClickListener {
-            stopService(Intent(this, MockLocationService::class.java))
-            binding.textStatus.setText(R.string.status_idle)
-            binding.textError.text = ""
+            stopRoutePlayback()
+        }
+
+        binding.checkRoundTrip.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                binding.checkLoop.isChecked = false
+            }
         }
 
         binding.buttonSaveRoute.setOnClickListener {
@@ -386,15 +394,54 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        startMockService()
+        startRoutePlayback()
     }
 
-    private fun startMockService() {
-        ContextCompat.startForegroundService(
-            this,
-            Intent(this, MockLocationService::class.java)
-        )
+    private fun startRoutePlayback() {
+        if (routePoints.size < 2) {
+            binding.textStatus.setText(R.string.status_error)
+            binding.textError.setText(R.string.error_route_points)
+            return
+        }
+        val speedMode = binding.spinnerSpeedMode.selectedItemPosition
+        val speedMin = binding.editSpeedMin.text.toString().toDoubleOrNull() ?: 0.0
+        val speedMax = binding.editSpeedMax.text.toString().toDoubleOrNull() ?: 0.0
+        val pauseMin = binding.editPauseMin.text.toString().toDoubleOrNull() ?: 0.0
+        val pauseMax = binding.editPauseMax.text.toString().toDoubleOrNull() ?: 0.0
+        val randomSpeed = binding.checkRandomSpeed.isChecked
+        val loopEnabled = binding.checkLoop.isChecked
+        val roundTripEnabled = binding.checkRoundTrip.isChecked
+        val intent = Intent(this, MockLocationService::class.java).apply {
+            action = MockLocationService.ACTION_START_ROUTE
+            putExtra(MockLocationService.EXTRA_ROUTE_JSON, RouteJson.toJson(routePoints))
+            putExtra(MockLocationService.EXTRA_SPEED_MODE, speedMode)
+            putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, speedMin)
+            putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, speedMax)
+            putExtra(MockLocationService.EXTRA_PAUSE_MIN_SEC, pauseMin)
+            putExtra(MockLocationService.EXTRA_PAUSE_MAX_SEC, pauseMax)
+            putExtra(MockLocationService.EXTRA_RANDOM_SPEED, randomSpeed)
+            putExtra(MockLocationService.EXTRA_LOOP_ENABLED, loopEnabled)
+            putExtra(MockLocationService.EXTRA_ROUNDTRIP_ENABLED, roundTripEnabled)
+        }
+        ContextCompat.startForegroundService(this, intent)
         binding.textStatus.setText(R.string.status_running)
+        binding.textError.text = ""
+    }
+
+    private fun pauseRoutePlayback() {
+        val intent = Intent(this, MockLocationService::class.java).apply {
+            action = MockLocationService.ACTION_PAUSE_ROUTE
+        }
+        startService(intent)
+    }
+
+    private fun stopRoutePlayback() {
+        val intent = Intent(this, MockLocationService::class.java).apply {
+            action = MockLocationService.ACTION_STOP_ROUTE
+        }
+        startService(intent)
+        stopService(Intent(this, MockLocationService::class.java))
+        binding.textStatus.setText(R.string.status_idle)
         binding.textError.text = ""
     }
 
@@ -455,7 +502,7 @@ class MainActivity : AppCompatActivity() {
 
         if (requestCode == REQUEST_NOTIFICATION_PERMISSION && grantResults.isNotEmpty()) {
             if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startMockService()
+                startRoutePlayback()
             } else {
                 binding.textStatus.setText(R.string.status_error)
                 binding.textError.setText(R.string.error_notifications)

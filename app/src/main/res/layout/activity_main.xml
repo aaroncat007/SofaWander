@@ -72,6 +72,111 @@
             android:textSize="12sp"
             android:layout_marginTop="2dp" />
 
+        <TextView
+            android:id="@+id/labelSpeedMode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/label_speed_mode"
+            android:textStyle="bold"
+            android:layout_marginTop="10dp" />
+
+        <Spinner
+            android:id="@+id/spinnerSpeedMode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:entries="@array/speed_modes" />
+
+        <TextView
+            android:id="@+id/labelSpeedRange"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/label_speed_range"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp">
+
+            <EditText
+                android:id="@+id/editSpeedMin"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="numberDecimal"
+                android:hint="@string/hint_speed_min" />
+
+            <EditText
+                android:id="@+id/editSpeedMax"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="numberDecimal"
+                android:hint="@string/hint_speed_max"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/labelPauseRange"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/label_pause_range"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp">
+
+            <EditText
+                android:id="@+id/editPauseMin"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="numberDecimal"
+                android:hint="@string/hint_pause_min" />
+
+            <EditText
+                android:id="@+id/editPauseMax"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="numberDecimal"
+                android:hint="@string/hint_pause_max"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <CheckBox
+                android:id="@+id/checkRandomSpeed"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_random_speed" />
+
+            <CheckBox
+                android:id="@+id/checkLoop"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_loop"
+                android:layout_marginStart="12dp" />
+
+            <CheckBox
+                android:id="@+id/checkRoundTrip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_roundtrip"
+                android:layout_marginStart="12dp" />
+        </LinearLayout>
+
         <Button
             android:id="@+id/buttonDevOptions"
             android:layout_width="match_parent"
@@ -98,6 +203,14 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="@string/button_start" />
+
+            <Button
+                android:id="@+id/buttonPause"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/button_pause"
+                android:layout_marginStart="8dp" />
 
             <Button
                 android:id="@+id/buttonStop"

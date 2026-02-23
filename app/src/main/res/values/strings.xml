@@ -5,12 +5,21 @@
     <string name="status_running">Running</string>
     <string name="status_error">Error</string>
     <string name="status_paused">Paused</string>
-    <string name="button_start">Start Mock</string>
-    <string name="button_stop">Stop Mock</string>
+    <string name="button_start">Start Route</string>
+    <string name="button_stop">Stop Route</string>
     <string name="button_pause">Pause</string>
     <string name="button_dev_options">Open Developer Options</string>
     <string name="button_location_settings">Open Location Settings</string>
     <string name="label_speed_mode">Speed Mode</string>
+    <string name="label_speed_range">Speed Range (km/h)</string>
+    <string name="hint_speed_min">Min</string>
+    <string name="hint_speed_max">Max</string>
+    <string name="label_pause_range">Pause Range (sec)</string>
+    <string name="hint_pause_min">Min</string>
+    <string name="hint_pause_max">Max</string>
+    <string name="label_loop">Loop</string>
+    <string name="label_roundtrip">Round Trip</string>
+    <string name="label_random_speed">Random Speed</string>
     <string name="route_name_hint">Route name</string>
     <string name="button_save_route">Save Route</string>
     <string name="button_clear_route">Clear</string>
@@ -27,7 +36,7 @@
     <string name="instructions">
         1. Enable Developer Options\n
         2. Select this app as the Mock Location app\n
-        3. Tap Start Mock
+        3. Tap Start Route
     </string>
     <string name="error_not_mock_app">This app is not set as the Mock Location app.</string>
     <string name="error_no_permission">Location permission not granted.</string>
