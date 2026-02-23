@@ -1,4 +1,4 @@
-package com.potato.couch.data
+package com.sofawander.app.data
 
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory

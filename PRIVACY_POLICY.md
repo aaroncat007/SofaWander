@@ -1,4 +1,4 @@
-# 隱私政策 Privacy Policy
+# 隱私政策 Privacy Policy — 躺著逛街 (Sofa Wander)
 
 **生效日期 / Effective Date:** 2026-02-24
 

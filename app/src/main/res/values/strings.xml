@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">躺著逛街</string>
+    <string name="app_name">Sofa Wander</string>
     <string name="title_status">Status</string>
     <string name="status_idle">Idle</string>
     <string name="status_running">Running</string>

@@ -1,4 +1,4 @@
-package com.potato.couch.ui
+package com.sofawander.app.ui
 
 import android.view.LayoutInflater
 import android.view.View
@@ -7,21 +7,21 @@ import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.potato.couch.R
+import com.sofawander.app.R
 
-class RouteAdapter(
-    private val onClick: (RouteItem) -> Unit
-) : ListAdapter<RouteItem, RouteAdapter.RouteViewHolder>(DiffCallback()) {
+class FavoriteAdapter(
+    private val onClick: (FavoriteItem) -> Unit
+) : ListAdapter<FavoriteItem, FavoriteAdapter.FavoriteViewHolder>(DiffCallback()) {
 
     private var selectedId: Long? = null
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RouteViewHolder {
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FavoriteViewHolder {
         val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_route, parent, false)
-        return RouteViewHolder(view, onClick) { id -> setSelected(id) }
+            .inflate(R.layout.item_favorite, parent, false)
+        return FavoriteViewHolder(view, onClick) { id -> setSelected(id) }
     }
 
-    override fun onBindViewHolder(holder: RouteViewHolder, position: Int) {
+    override fun onBindViewHolder(holder: FavoriteViewHolder, position: Int) {
         holder.bind(getItem(position), selectedId)
     }
 
@@ -39,16 +39,18 @@ class RouteAdapter(
         if (newIndex >= 0) notifyItemChanged(newIndex)
     }
 
-    class RouteViewHolder(
+    class FavoriteViewHolder(
         itemView: View,
-        private val onClick: (RouteItem) -> Unit,
+        private val onClick: (FavoriteItem) -> Unit,
         private val onSelect: (Long) -> Unit
     ) : RecyclerView.ViewHolder(itemView) {
 
-        private val nameView: TextView = itemView.findViewById(R.id.textRouteName)
+        private val nameView: TextView = itemView.findViewById(R.id.textFavoriteName)
+        private val coordView: TextView = itemView.findViewById(R.id.textFavoriteCoords)
 
-        fun bind(item: RouteItem, selectedId: Long?) {
+        fun bind(item: FavoriteItem, selectedId: Long?) {
             nameView.text = item.name
+            coordView.text = "${item.lat}, ${item.lng}"
             itemView.isSelected = item.id == selectedId
             itemView.setOnClickListener {
                 onSelect(item.id)
@@ -57,12 +59,12 @@ class RouteAdapter(
         }
     }
 
-    private class DiffCallback : DiffUtil.ItemCallback<RouteItem>() {
-        override fun areItemsTheSame(oldItem: RouteItem, newItem: RouteItem): Boolean {
+    private class DiffCallback : DiffUtil.ItemCallback<FavoriteItem>() {
+        override fun areItemsTheSame(oldItem: FavoriteItem, newItem: FavoriteItem): Boolean {
             return oldItem.id == newItem.id
         }
 
-        override fun areContentsTheSame(oldItem: RouteItem, newItem: RouteItem): Boolean {
+        override fun areContentsTheSame(oldItem: FavoriteItem, newItem: FavoriteItem): Boolean {
             return oldItem == newItem
         }
     }

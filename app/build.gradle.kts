@@ -11,11 +11,11 @@ kapt {
 }
 
 android {
-    namespace = "com.potato.couch"
+    namespace = "com.sofawander.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.potato.couch"
+        applicationId = "com.sofawander.app"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

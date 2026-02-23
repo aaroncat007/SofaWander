@@ -1,4 +1,4 @@
-package com.potato.couch
+package com.sofawander.app
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -14,11 +14,11 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
-import com.potato.couch.data.AppDatabase
-import com.potato.couch.data.GpsEventEntity
-import com.potato.couch.data.RouteJson
-import com.potato.couch.data.RoutePoint
-import com.potato.couch.data.RunHistoryEntity
+import com.sofawander.app.data.AppDatabase
+import com.sofawander.app.data.GpsEventEntity
+import com.sofawander.app.data.RouteJson
+import com.sofawander.app.data.RoutePoint
+import com.sofawander.app.data.RunHistoryEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -489,12 +489,12 @@ class MockLocationService : Service() {
     }
 
     companion object {
-        const val ACTION_MOCK_STATUS = "com.potato.couch.MOCK_STATUS"
+        const val ACTION_MOCK_STATUS = "com.sofawander.app.MOCK_STATUS"
         const val EXTRA_STATUS = "extra_status"
         const val EXTRA_MESSAGE = "extra_message"
-        const val ACTION_START_ROUTE = "com.potato.couch.ACTION_START_ROUTE"
-        const val ACTION_PAUSE_ROUTE = "com.potato.couch.ACTION_PAUSE_ROUTE"
-        const val ACTION_STOP_ROUTE = "com.potato.couch.ACTION_STOP_ROUTE"
+        const val ACTION_START_ROUTE = "com.sofawander.app.ACTION_START_ROUTE"
+        const val ACTION_PAUSE_ROUTE = "com.sofawander.app.ACTION_PAUSE_ROUTE"
+        const val ACTION_STOP_ROUTE = "com.sofawander.app.ACTION_STOP_ROUTE"
         const val EXTRA_ROUTE_JSON = "extra_route_json"
         const val EXTRA_SPEED_MODE = "extra_speed_mode"
         const val EXTRA_SPEED_MIN_KMH = "extra_speed_min_kmh"

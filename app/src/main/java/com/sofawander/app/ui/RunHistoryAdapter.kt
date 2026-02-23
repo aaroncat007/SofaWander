@@ -1,4 +1,4 @@
-package com.potato.couch.ui
+package com.sofawander.app.ui
 
 import android.view.LayoutInflater
 import android.view.View
@@ -7,7 +7,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.potato.couch.R
+import com.sofawander.app.R
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

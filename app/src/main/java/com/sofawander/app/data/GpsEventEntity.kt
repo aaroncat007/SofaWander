@@ -1,4 +1,4 @@
-package com.potato.couch.data
+package com.sofawander.app.data
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity

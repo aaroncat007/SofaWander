@@ -1,4 +1,4 @@
-package com.potato.couch.ui
+package com.sofawander.app.ui
 
 data class FavoriteItem(
     val id: Long,

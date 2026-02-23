@@ -1,4 +1,4 @@
-# 躺著逛街
+# 躺著逛街 (Sofa Wander)
 
 一款 Android 路線模擬定位 App（無需 root）。支援在地圖上點選建立路線、速度/停留/擬真行為設定、背景執行與資料管理，並可匯入/匯出 GPX/KML。
 
@@ -26,10 +26,10 @@
 - minSdk 26 / targetSdk 34
 
 ## 專案結構
-- `app/src/main/java/com/potato/couch/MainActivity.kt`：主要 UI 與地圖操作
-- `app/src/main/java/com/potato/couch/MockLocationService.kt`：Mock Location 前台服務
-- `app/src/main/java/com/potato/couch/data/`：Room DB、Entities、DAOs
-- `app/src/main/java/com/potato/couch/io/RouteFileIO.kt`：GPX/KML 匯入匯出
+- `app/src/main/java/com/sofawander/app/MainActivity.kt`：主要 UI 與地圖操作
+- `app/src/main/java/com/sofawander/app/MockLocationService.kt`：Mock Location 前台服務
+- `app/src/main/java/com/sofawander/app/data/`：Room DB、Entities、DAOs
+- `app/src/main/java/com/sofawander/app/data/RouteFileIO.kt`：GPX/KML 匯入匯出
 - `app/src/main/res/layout/`：XML 版面
 
 ## 開發與執行

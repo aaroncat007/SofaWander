@@ -1,4 +1,4 @@
-# 躺著逛街上架準備文件
+# 躺著逛街 (Sofa Wander) 上架準備文件
 
 > 本文件提供 Google Play 上架所需的權限說明、隱私政策模板、商店描述草稿與資料安全性問卷草稿。
 
@@ -61,13 +61,13 @@
 ## 3) Google Play 商店描述草稿
 
 **App 名稱**
-- 躺著逛街
+- 躺著逛街 (Sofa Wander)
 
 **短描述（80 字內）**
-- 躺著逛街：給自己安排一條小旅行路線，走走停停剛剛好！
+- 躺著逛街 (Sofa Wander)：給自己安排一條小旅行路線，走走停停剛剛好！
 
 **完整描述（建議 4–6 段）**
-- 躺著逛街是一款俏皮又實用的定位小工具，讓你用自己的節奏安排小旅程。
+- 躺著逛街 (Sofa Wander) 是一款俏皮又實用的定位小工具，讓你用自己的節奏安排小旅程。
 - 地圖上點一點就能畫路線，想快一點、慢一點都可以，還能設定停留時間。
 - 喜歡的路線存起來，下次一鍵開走，走累了也能暫停再出發。
 - 支援 GPX / KML 匯入匯出，備份分享都方便。
@@ -83,10 +83,10 @@
 
 **English Version (Playful)**  
 **Short Description (≤80 chars)**  
-- Liezhe Guangjie: plan cute routes, pick your pace, and go at your rhythm.
+- Sofa Wander: plan cute routes, pick your pace, and go at your rhythm.
 
 **Full Description**  
-- Liezhe Guangjie is a playful, handy location tool that lets you plan little journeys at your own pace.  
+- Sofa Wander is a playful, handy location tool that lets you plan little journeys at your own pace.  
 - Tap on the map to create a route, speed it up or slow it down, and add pause times for a more natural flow.  
 - Save your favorite routes, start or pause anytime, and pick up right where you left off.  
 - It also supports GPX/KML import and export for easy backup and sharing.  

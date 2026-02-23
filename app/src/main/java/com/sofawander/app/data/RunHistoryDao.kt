@@ -1,4 +1,4 @@
-package com.potato.couch.data
+package com.sofawander.app.data
 
 import androidx.room.Dao
 import androidx.room.Insert

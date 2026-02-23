@@ -1,6 +1,6 @@
-package com.potato.couch.ui
+package com.sofawander.app.ui
 
-import com.potato.couch.data.RoutePoint
+import com.sofawander.app.data.RoutePoint
 
 data class RouteItem(
     val id: Long,

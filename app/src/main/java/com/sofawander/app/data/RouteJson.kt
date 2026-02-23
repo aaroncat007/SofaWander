@@ -1,4 +1,4 @@
-package com.potato.couch.data
+package com.sofawander.app.data
 
 import org.json.JSONArray
 import org.json.JSONObject

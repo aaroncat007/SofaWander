@@ -1,4 +1,4 @@
-# 躺著逛街 (Fake GPS) 任務文件
+# 躺著逛街 (Sofa Wander) 任務文件
 
 ## 專案目標
 建立一款 Android 模擬定位 App（無需 root），支援路線規劃、速度/行為模擬、背景執行與路線管理，並可上架 Google Play。
