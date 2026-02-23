@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">躺著逛街</string>
+    <string name="title_status">Status</string>
+    <string name="status_idle">Idle</string>
+    <string name="status_running">Running</string>
+    <string name="status_error">Error</string>
+    <string name="button_start">Start Mock</string>
+    <string name="button_stop">Stop Mock</string>
+    <string name="button_dev_options">Open Developer Options</string>
+    <string name="button_location_settings">Open Location Settings</string>
+    <string name="instructions">
+        1. Enable Developer Options\n
+        2. Select this app as the Mock Location app\n
+        3. Tap Start Mock
+    </string>
+    <string name="error_not_mock_app">This app is not set as the Mock Location app.</string>
+    <string name="error_no_permission">Location permission not granted.</string>
+    <string name="error_notifications">Notification permission not granted.</string>
+    <string name="error_location_disabled">Location is disabled. Please enable location services.</string>
+</resources>
