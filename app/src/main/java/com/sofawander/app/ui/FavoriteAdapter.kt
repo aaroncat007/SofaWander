@@ -10,7 +10,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.sofawander.app.R
 
 class FavoriteAdapter(
-    private val onClick: (FavoriteItem) -> Unit
+    private val onClick: (FavoriteItem) -> Unit,
+    private val onDelete: (FavoriteItem) -> Unit
 ) : ListAdapter<FavoriteItem, FavoriteAdapter.FavoriteViewHolder>(DiffCallback()) {
 
     private var selectedId: Long? = null
@@ -18,7 +19,7 @@ class FavoriteAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FavoriteViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_favorite, parent, false)
-        return FavoriteViewHolder(view, onClick) { id -> setSelected(id) }
+        return FavoriteViewHolder(view, onClick, onDelete) { id -> setSelected(id) }
     }
 
     override fun onBindViewHolder(holder: FavoriteViewHolder, position: Int) {
@@ -42,11 +43,13 @@ class FavoriteAdapter(
     class FavoriteViewHolder(
         itemView: View,
         private val onClick: (FavoriteItem) -> Unit,
+        private val onDelete: (FavoriteItem) -> Unit,
         private val onSelect: (Long) -> Unit
     ) : RecyclerView.ViewHolder(itemView) {
 
         private val nameView: TextView = itemView.findViewById(R.id.textFavoriteName)
         private val coordView: TextView = itemView.findViewById(R.id.textFavoriteCoords)
+        private val btnDelete: android.widget.ImageButton = itemView.findViewById(R.id.btnDeleteFavorite)
 
         fun bind(item: FavoriteItem, selectedId: Long?) {
             nameView.text = item.name
@@ -55,6 +58,9 @@ class FavoriteAdapter(
             itemView.setOnClickListener {
                 onSelect(item.id)
                 onClick(item)
+            }
+            btnDelete.setOnClickListener {
+                onDelete(item)
             }
         }
     }

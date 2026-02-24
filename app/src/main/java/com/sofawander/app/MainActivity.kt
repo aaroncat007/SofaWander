@@ -52,12 +52,15 @@ import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var mapView: MapView
     private var mapLibre: MapLibreMap? = null
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
 
     private val routePoints = mutableListOf<RoutePoint>()
     private lateinit var adapter: RouteAdapter
@@ -66,6 +69,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var historyAdapter: RunHistoryAdapter
     private var selectedFavoriteId: Long? = null
     private var lastTappedPoint: RoutePoint? = null
+
     private val openDocumentLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri == null) return@registerForActivityResult
@@ -161,6 +165,8 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
         mapView = binding.mapView
         mapView.onCreate(savedInstanceState)
         setupMap()
@@ -172,19 +178,7 @@ class MainActivity : AppCompatActivity() {
         binding.recyclerRoutes.layoutManager = LinearLayoutManager(this)
         binding.recyclerRoutes.adapter = adapter
 
-        favoriteAdapter = FavoriteAdapter { item ->
-            selectedFavoriteId = item.id
-            lastTappedPoint = RoutePoint(item.lat, item.lng)
-            mapLibre?.animateCamera(
-                CameraUpdateFactory.newLatLngZoom(
-                    org.maplibre.android.geometry.LatLng(item.lat, item.lng),
-                    15.5
-                )
-            )
-            showFavoriteEditDialog(item)
-        }
-        binding.recyclerFavorites.layoutManager = LinearLayoutManager(this)
-        binding.recyclerFavorites.adapter = favoriteAdapter
+        // favorites are now handled inside a custom dialog when opened
 
         historyAdapter = RunHistoryAdapter { item ->
             showRunDetails(item)
@@ -199,6 +193,7 @@ class MainActivity : AppCompatActivity() {
         setupInputFilters()
         setupTooltips()
         initM4Defaults()
+        setupJoystick()
     }
 
     private fun bindActions() {
@@ -345,8 +340,29 @@ class MainActivity : AppCompatActivity() {
             addFavorite()
         }
 
-        binding.buttonDeleteFavorite.setOnClickListener {
-            deleteFavorite()
+        binding.btnFavorites.setOnClickListener {
+            showFavoritesDialog()
+        }
+
+        binding.btnSettings.setOnClickListener {
+            binding.drawerLayout.open()
+        }
+
+        binding.btnRoutePlanning.setOnClickListener {
+            Toast.makeText(this, "Route Planning feature coming soon", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.btnWalkMenu.setOnClickListener {
+            val visible = binding.layoutWalkControls.visibility == android.view.View.VISIBLE
+            binding.layoutWalkControls.visibility = if (visible) android.view.View.GONE else android.view.View.VISIBLE
+        }
+
+        binding.btnTeleport.setOnClickListener {
+            showTeleportDialog()
+        }
+
+        binding.btnLocation.setOnClickListener {
+            centerToCurrentLocation()
         }
     }
 
@@ -354,24 +370,8 @@ class MainActivity : AppCompatActivity() {
         mapView.getMapAsync { map ->
             mapLibre = map
             map.setStyle(Style.Builder().fromUri(MAP_STYLE_URL)) { style ->
-                style.addSource(GeoJsonSource(ROUTE_SOURCE_ID))
-                style.addSource(GeoJsonSource(POINTS_SOURCE_ID))
-                val lineLayer = LineLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
-                    PropertyFactory.lineColor(MAP_ROUTE_COLOR),
-                    PropertyFactory.lineWidth(4f)
-                )
-                style.addLayer(lineLayer)
-
-                val circleLayer = org.maplibre.android.style.layers.CircleLayer(
-                    POINTS_LAYER_ID,
-                    POINTS_SOURCE_ID
-                ).withProperties(
-                    PropertyFactory.circleColor(MAP_POINT_COLOR),
-                    PropertyFactory.circleRadius(4f),
-                    PropertyFactory.circleStrokeColor(MAP_POINT_STROKE),
-                    PropertyFactory.circleStrokeWidth(1f)
-                )
-                style.addLayer(circleLayer)
+                setupMapLayers(style)
+                enableLocationComponent(style)
             }
 
             map.addOnMapClickListener { point ->
@@ -388,6 +388,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 true
             }
+
+            centerToCurrentLocation()
         }
 
         mapView.setOnTouchListener { _, event ->
@@ -411,6 +413,52 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private var joystickCenterX = 0f
+    private var joystickCenterY = 0f
+    private var joystickRadius = 0f
+
+    private fun setupJoystick() {
+        val container = binding.joystickContainer
+        val thumb = binding.joystickThumb
+
+        container.post {
+            joystickCenterX = container.width / 2f
+            joystickCenterY = container.height / 2f
+            joystickRadius = container.width / 2f - thumb.width / 2f
+            
+            thumb.translationX = 0f
+            thumb.translationY = 0f
+        }
+
+        container.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                    val dx = event.x - joystickCenterX
+                    val dy = event.y - joystickCenterY
+                    val distance = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+
+                    if (distance <= joystickRadius) {
+                        thumb.translationX = dx
+                        thumb.translationY = dy
+                    } else {
+                        val ratio = joystickRadius / distance
+                        thumb.translationX = dx * ratio
+                        thumb.translationY = dy * ratio
+                    }
+                    
+                    // TODO: Dispatch joystick vector (dx, dy) to mock location service
+                    return@setOnTouchListener true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    thumb.animate().translationX(0f).translationY(0f).setDuration(150).start()
+                    // TODO: Stop sending joystick vector
+                    return@setOnTouchListener true
+                }
+            }
+            false
+        }
+    }
+
     private fun updateRouteLine() {
         val map = mapLibre ?: return
         val style = map.style ?: return
@@ -427,6 +475,53 @@ class MainActivity : AppCompatActivity() {
 
         val features = points.map { point -> org.maplibre.geojson.Feature.fromGeometry(point) }
         pointSource.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(features))
+    }
+
+    @SuppressWarnings("MissingPermission")
+    private fun enableLocationComponent(loadedMapStyle: Style) {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            val locationComponent = mapLibre?.locationComponent
+            val locationComponentActivationOptions =
+                org.maplibre.android.location.LocationComponentActivationOptions.builder(this, loadedMapStyle)
+                    .build()
+            locationComponent?.activateLocationComponent(locationComponentActivationOptions)
+            locationComponent?.isLocationComponentEnabled = true
+            locationComponent?.renderMode = org.maplibre.android.location.modes.RenderMode.COMPASS
+        }
+    }
+
+    private fun setupMapLayers(style: Style) {
+        if (style.getSourceAs<GeoJsonSource>(ROUTE_SOURCE_ID) == null) {
+            style.addSource(GeoJsonSource(ROUTE_SOURCE_ID))
+        }
+        if (style.getSourceAs<GeoJsonSource>(POINTS_SOURCE_ID) == null) {
+            style.addSource(GeoJsonSource(POINTS_SOURCE_ID))
+        }
+
+        if (style.getLayer(ROUTE_LAYER_ID) == null) {
+            val lineLayer = LineLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
+                PropertyFactory.lineColor(MAP_ROUTE_COLOR),
+                PropertyFactory.lineWidth(4f)
+            )
+            style.addLayer(lineLayer)
+        }
+
+        if (style.getLayer(POINTS_LAYER_ID) == null) {
+            val circleLayer = org.maplibre.android.style.layers.CircleLayer(
+                POINTS_LAYER_ID,
+                POINTS_SOURCE_ID
+            ).withProperties(
+                PropertyFactory.circleColor(MAP_POINT_COLOR),
+                PropertyFactory.circleRadius(4f),
+                PropertyFactory.circleStrokeColor(MAP_POINT_STROKE),
+                PropertyFactory.circleStrokeWidth(1f)
+            )
+            style.addLayerAbove(circleLayer, ROUTE_LAYER_ID)
+        }
     }
 
     private fun loadRoute(item: RouteItem) {
@@ -463,11 +558,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private var currentFavorites = emptyList<FavoriteItem>()
+
     private fun observeFavorites() {
         val db = AppDatabase.getInstance(this)
         lifecycleScope.launch {
             db.favoriteDao().getAllFavorites().collectLatest { favorites ->
-                val items = favorites.map { entity ->
+                currentFavorites = favorites.map { entity ->
                     FavoriteItem(
                         id = entity.id,
                         name = entity.name,
@@ -476,9 +573,46 @@ class MainActivity : AppCompatActivity() {
                         note = entity.note
                     )
                 }
-                favoriteAdapter.submitList(items)
             }
         }
+    }
+
+    private fun showFavoritesDialog() {
+        val view = layoutInflater.inflate(R.layout.dialog_favorites, null)
+        val recycler = view.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerDialogFavorites)
+        val btnCancel = view.findViewById<android.widget.Button>(R.id.btnCancelFavorites)
+
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(true)
+            .create()
+
+        val adapter = FavoriteAdapter(
+            onClick = { item ->
+                selectedFavoriteId = item.id
+                lastTappedPoint = RoutePoint(item.lat, item.lng)
+                mapLibre?.animateCamera(
+                    CameraUpdateFactory.newLatLngZoom(
+                        org.maplibre.android.geometry.LatLng(item.lat, item.lng),
+                        15.5
+                    )
+                )
+                dialog.dismiss()
+            },
+            onDelete = { item ->
+                val db = AppDatabase.getInstance(this)
+                lifecycleScope.launch {
+                    db.favoriteDao().deleteById(item.id)
+                }
+            }
+        )
+        
+        recycler.layoutManager = LinearLayoutManager(this)
+        recycler.adapter = adapter
+        adapter.submitList(currentFavorites)
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
     }
 
     private fun observeHistory() {
@@ -603,6 +737,102 @@ class MainActivity : AppCompatActivity() {
         return sb.toString()
     }
 
+    private fun showTeleportDialog() {
+        val view = layoutInflater.inflate(R.layout.dialog_teleport, null)
+        val editCoords = view.findViewById<android.widget.EditText>(R.id.editCoords)
+        val textDistanceStatus = view.findViewById<android.widget.TextView>(R.id.textDistanceStatus)
+        val btnFormat = view.findViewById<android.widget.Button>(R.id.btnFormat)
+        val btnPaste = view.findViewById<android.widget.Button>(R.id.btnPaste)
+        val btnCancel = view.findViewById<android.widget.Button>(R.id.btnCancel)
+        val btnTeleportAction = view.findViewById<android.widget.Button>(R.id.btnTeleportAction)
+
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(true)
+            .create()
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+
+        btnPaste.setOnClickListener {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val item = clipboard.primaryClip?.getItemAt(0)
+            val text = item?.text?.toString() ?: ""
+            editCoords.setText(text)
+        }
+
+        btnFormat.setOnClickListener {
+            val raw = editCoords.text.toString()
+            val clean = raw.replace(Regex("[^0-9.,-]"), "")
+            editCoords.setText(clean)
+        }
+
+        btnTeleportAction.setOnClickListener {
+            val raw = editCoords.text.toString()
+            val parts = raw.split(",")
+            if (parts.size >= 2) {
+                val lat = parts[0].trim().toDoubleOrNull()
+                val lng = parts[1].trim().toDoubleOrNull()
+                if (lat != null && lng != null) {
+                    mapLibre?.animateCamera(
+                        CameraUpdateFactory.newLatLngZoom(
+                            org.maplibre.android.geometry.LatLng(lat, lng),
+                            15.5
+                        )
+                    )
+                }
+            }
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
+
+    private val requestLocationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineLocationGranted = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseLocationGranted = permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        if (fineLocationGranted || coarseLocationGranted) {
+            mapLibre?.style?.let { style -> enableLocationComponent(style) }
+            centerToCurrentLocation()
+        } else {
+            Toast.makeText(this, "Location permission denied", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun centerToCurrentLocation() {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
+                this,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestLocationPermissionLauncher.launch(
+                arrayOf(
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+            return
+        }
+
+        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            location?.let {
+                mapLibre?.animateCamera(
+                    CameraUpdateFactory.newLatLngZoom(
+                        org.maplibre.android.geometry.LatLng(it.latitude, it.longitude),
+                        16.0
+                    ),
+                    1000
+                )
+            }
+        }.addOnFailureListener {
+            Toast.makeText(this, "Failed to get current location", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun saveRoute() {
         val name = binding.editRouteName.text.toString().trim()
         if (name.isEmpty()) {
@@ -685,18 +915,6 @@ class MainActivity : AppCompatActivity() {
         }
         binding.editFavoriteName.text?.clear()
         binding.textError.text = ""
-    }
-
-    private fun deleteFavorite() {
-        val id = selectedFavoriteId ?: run {
-            binding.textError.setText(R.string.error_favorite_select)
-            return
-        }
-        val db = AppDatabase.getInstance(this)
-        lifecycleScope.launch {
-            db.favoriteDao().deleteById(id)
-        }
-        selectedFavoriteId = null
     }
 
     private fun showFavoriteEditDialog(item: FavoriteItem) {
@@ -1216,7 +1434,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_DRIFT_METERS = 50.0
         private const val MAX_BOUNCE_METERS = 50.0
         private const val MAX_SMOOTHING_ALPHA = 1.0
-        private const val MAP_STYLE_URL = "https://demotiles.maplibre.org/style.json"
+        private const val MAP_STYLE_URL = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json"
         private const val ROUTE_SOURCE_ID = "route-source"
         private const val ROUTE_LAYER_ID = "route-layer"
         private const val POINTS_SOURCE_ID = "points-source"

@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="20dp"
+    android:background="@color/white">
+
+    <TextView
+        android:id="@+id/textTeleportTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Teleport To Location"
+        android:textSize="20sp"
+        android:textColor="@color/black"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <Button
+        android:id="@+id/btnFavorites"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="FAVORITES"
+        style="@style/Widget.AppCompat.Button.Borderless.Colored"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <CheckBox
+        android:id="@+id/checkWalkMode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="WALK MODE"
+        android:textColor="@color/black"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btnFavorites" />
+
+    <TextView
+        android:id="@+id/labelCoords"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Latitude, Longitude"
+        android:textSize="12sp"
+        android:layout_marginTop="16dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/checkWalkMode" />
+
+    <EditText
+        android:id="@+id/editCoords"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:hint="40.75512, -73.9836"
+        android:inputType="text"
+        android:textColor="@color/black"
+        android:backgroundTint="@color/blue_500"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/labelCoords" />
+
+    <LinearLayout
+        android:id="@+id/layoutActionButtons"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/editCoords">
+
+        <Button
+            android:id="@+id/btnPaste"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="PASTE"
+            android:backgroundTint="@color/blue_500"
+            android:textColor="@color/white" />
+
+        <Button
+            android:id="@+id/btnFormat"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="FORMAT"
+            style="@style/Widget.AppCompat.Button.Borderless.Colored"
+            android:layout_marginStart="8dp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/textDistanceStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Distance: 0m - Cooldown: 0s - Elapsed: 0s"
+        android:textColor="@android:color/holo_red_dark"
+        android:layout_marginTop="16dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layoutActionButtons" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end"
+        android:layout_marginTop="24dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/textDistanceStatus">
+
+        <Button
+            android:id="@+id/btnTeleportBack"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TELEPORT BACK"
+            style="@style/Widget.AppCompat.Button.Borderless.Colored" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+
+        <Button
+            android:id="@+id/btnCancel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CANCEL"
+            style="@style/Widget.AppCompat.Button.Borderless.Colored" />
+
+        <Button
+            android:id="@+id/btnTeleportAction"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TELEPORT"
+            style="@style/Widget.AppCompat.Button.Borderless.Colored" />
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
