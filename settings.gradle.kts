@@ -2,6 +2,7 @@ pluginManagement {
     repositories {
         google()
         mavenCentral()
+        gradlePluginPortal()
     }
 }
 
@@ -13,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LiezheGuangjie"
+rootProject.name = "SofaWander"
 include(":app")

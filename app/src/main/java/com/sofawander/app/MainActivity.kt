@@ -41,6 +41,8 @@ import com.sofawander.app.ui.RouteItem
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import org.maplibre.android.MapLibre
+import org.maplibre.android.WellKnownTileServer
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
@@ -155,6 +157,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        MapLibre.getInstance(this, null, WellKnownTileServer.MapLibre)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -1115,9 +1118,11 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         mapView.onStart()
-        registerReceiver(
+        ContextCompat.registerReceiver(
+            this,
             mockStatusReceiver,
-            IntentFilter(MockLocationService.ACTION_MOCK_STATUS)
+            IntentFilter(MockLocationService.ACTION_MOCK_STATUS),
+            ContextCompat.RECEIVER_NOT_EXPORTED
         )
         syncStatusFromPrefs()
         if (!isLocationEnabled()) {
