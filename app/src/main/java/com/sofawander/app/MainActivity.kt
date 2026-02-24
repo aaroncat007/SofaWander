@@ -150,6 +150,7 @@ class MainActivity : AppCompatActivity() {
         }
     private var isDraggingPoint = false
     private var draggingIndex = -1
+    private var isRouteRunning = false
 
     private val mockStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -157,6 +158,11 @@ class MainActivity : AppCompatActivity() {
             val message = intent.getStringExtra(MockLocationService.EXTRA_MESSAGE).orEmpty()
             binding.textStatus.text = status
             binding.textError.text = message
+
+            // 根據服務狀態同步更新 Start Route 按鈕
+            val running = status == getString(R.string.status_running) || status == getString(R.string.status_paused)
+            isRouteRunning = running
+            binding.buttonStartRoute.text = if (running) "Stop Route" else "Start Route"
         }
     }
 
@@ -195,6 +201,21 @@ class MainActivity : AppCompatActivity() {
         setupTooltips()
         initM4Defaults()
         setupJoystick()
+
+        // 註冊 MockLocationService 狀態接收器
+        val filter = android.content.IntentFilter(MockLocationService.ACTION_MOCK_STATUS)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(mockStatusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(mockStatusReceiver, filter)
+        }
+
+        // Android 13+ 通知權限動態請求
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATION_PERMISSION)
+            }
+        }
     }
 
     private fun bindActions() {
@@ -304,6 +325,21 @@ class MainActivity : AppCompatActivity() {
                 updateRouteLine()
                 updatePointCount()
             }
+        }
+
+        binding.buttonStartRoute.setOnClickListener {
+            if (isRouteRunning) {
+                stopRoutePlayback()
+                isRouteRunning = false
+                binding.buttonStartRoute.text = "Start Route"
+            } else {
+                ensurePermissionsAndStart()
+                // isRouteRunning 將在收到 STATUS_RUNNING 廣播後設定
+            }
+        }
+
+        binding.buttonLoadRoute.setOnClickListener {
+            showLoadRouteDialog()
         }
 
         binding.btnRouteEditorClose.setOnClickListener {
@@ -557,11 +593,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private var currentRoutes = emptyList<RouteItem>()
+
     private fun observeRoutes() {
         val db = AppDatabase.getInstance(this)
         lifecycleScope.launch {
             db.routeDao().getAllRoutes().collectLatest { routes ->
-                val items = routes.map { entity ->
+                currentRoutes = routes.map { entity ->
                     RouteItem(
                         id = entity.id,
                         name = entity.name,
@@ -569,9 +607,35 @@ class MainActivity : AppCompatActivity() {
                         createdAt = entity.createdAt
                     )
                 }
-                adapter.submitList(items)
+                adapter.submitList(currentRoutes)
             }
         }
+    }
+
+    private fun showLoadRouteDialog() {
+        val view = layoutInflater.inflate(R.layout.dialog_favorites, null) // 借用 favorites 的 dialog 佈局或以同樣結構撰寫
+        val recycler = view.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerDialogFavorites)
+        val btnCancel = view.findViewById<android.widget.Button>(R.id.btnCancelFavorites)
+
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Load Route")
+            .setView(view)
+            .setCancelable(true)
+            .create()
+
+        val routeAdapter = RouteAdapter(
+            onClick = { item ->
+                loadRoute(item)
+                dialog.dismiss()
+            }
+        )
+        
+        recycler.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+        recycler.adapter = routeAdapter
+        routeAdapter.submitList(currentRoutes)
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
     }
 
     private var currentFavorites = emptyList<FavoriteItem>()
@@ -1065,13 +1129,43 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        if (!isMockLocationEnabled()) {
+            showMockLocationSetupDialog()
+            return
+        }
+
         startRoutePlayback()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isMockLocationEnabled(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as? android.app.AppOpsManager ?: return false
+        return try {
+            val mode = appOps.checkOpNoThrow(
+                android.app.AppOpsManager.OPSTR_MOCK_LOCATION,
+                android.os.Process.myUid(),
+                packageName
+            )
+            mode == android.app.AppOpsManager.MODE_ALLOWED
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun showMockLocationSetupDialog() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("需要設定模擬定位")
+            .setMessage("請先到「開發人員選項」中，將本 APP 設定為「模擬定位應用程式」。\n\n路徑：設定 → 開發人員選項 → 選取模擬位置應用程式 → 選擇 SofaWander")
+            .setPositiveButton("前往設定") { _, _ ->
+                startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun startRoutePlayback() {
         if (routePoints.size < 2) {
-            binding.textStatus.setText(R.string.status_error)
-            binding.textError.setText(R.string.error_route_points)
+            Toast.makeText(this, R.string.error_route_points, Toast.LENGTH_SHORT).show()
             return
         }
         val speedMode = binding.spinnerSpeedMode.selectedItemPosition
@@ -1091,6 +1185,7 @@ class MainActivity : AppCompatActivity() {
         val smoothingAlpha = binding.editSmoothingAlpha.text.toString().toDoubleOrNull() ?: 0.0
 
         if (!validateRanges(showError = true)) {
+            Toast.makeText(this, "Speed/Pause range invalid", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -1115,15 +1210,13 @@ class MainActivity : AppCompatActivity() {
 
         val speedRange = normalizeRange(speedMinText, speedMaxText, MAX_SPEED_KMH)
         if (speedRange == null) {
-            binding.textStatus.setText(R.string.status_error)
-            binding.textError.setText(R.string.error_speed_range)
+            Toast.makeText(this, R.string.error_speed_range, Toast.LENGTH_SHORT).show()
             return
         }
 
         val pauseRange = normalizeRange(pauseMinText, pauseMaxText, MAX_PAUSE_SEC)
         if (pauseRange == null) {
-            binding.textStatus.setText(R.string.status_error)
-            binding.textError.setText(R.string.error_pause_range)
+            Toast.makeText(this, R.string.error_pause_range, Toast.LENGTH_SHORT).show()
             return
         }
         val intent = Intent(this, MockLocationService::class.java).apply {

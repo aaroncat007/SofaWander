@@ -13,6 +13,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.sofawander.app.data.AppDatabase
 import com.sofawander.app.data.GpsEventEntity
@@ -26,6 +27,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 class MockLocationService : Service() {
+
+    private val TAG = "MockLocSvc"
 
     private var handlerThread: HandlerThread? = null
     private var handler: Handler? = null
@@ -60,11 +63,12 @@ class MockLocationService : Service() {
     private val db by lazy { AppDatabase.getInstance(this) }
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private var providerReady = false
+
     override fun onCreate() {
         super.onCreate()
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         startInForeground()
-        startRouteLoop()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -114,6 +118,12 @@ class MockLocationService : Service() {
                     currentSegmentSpeed = pickSegmentSpeed()
                     isPaused = false
                     lastUpdateRealtime = SystemClock.elapsedRealtime()
+
+                    // 初始化 test provider 並啟動路線播放循環
+                    ensureTestProvider()
+                    Log.d(TAG, "onStartCommand: providerReady=$providerReady, points=${routePoints.size}")
+                    startRouteLoop()
+
                     setRunningFlag(true)
                     broadcastStatus(getString(R.string.status_running), "")
                     insertRunHistory(points.size, speedMode)
@@ -179,8 +189,6 @@ class MockLocationService : Service() {
     private fun startRouteLoop() {
         if (handlerThread != null) return
 
-        ensureTestProvider()
-
         handlerThread = HandlerThread("mock-location-thread").also { it.start() }
         handler = Handler(handlerThread!!.looper)
 
@@ -203,27 +211,35 @@ class MockLocationService : Service() {
     private fun ensureTestProvider() {
         val provider = LocationManager.GPS_PROVIDER
         val lm = locationManager ?: return
+        providerReady = false
+
+        try {
+            lm.removeTestProvider(provider)
+        } catch (_: Exception) { }
+
         try {
             lm.addTestProvider(
                 provider,
-                false,
-                false,
-                false,
-                false,
-                true,
-                true,
-                true,
-                0,
-                5
+                false, false, false, false, true, true, true,
+                android.location.Criteria.POWER_LOW,
+                android.location.Criteria.ACCURACY_FINE
             )
-        } catch (_: IllegalArgumentException) {
-            // Provider already exists.
+        } catch (e: SecurityException) {
+            Log.w(TAG, "addTestProvider SecurityException: ${e.message}")
+            reportMockAppError()
+            return
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "addTestProvider IAE: ${e.message}")
         }
 
         try {
             lm.setTestProviderEnabled(provider, true)
-        } catch (_: SecurityException) {
-            // If not set as mock location app, this will fail.
+            providerReady = true
+        } catch (e: SecurityException) {
+            Log.w(TAG, "setTestProviderEnabled SecurityException: ${e.message}")
+            reportMockAppError()
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "setTestProviderEnabled IAE: ${e.message}")
             reportMockAppError()
         }
     }
@@ -239,6 +255,7 @@ class MockLocationService : Service() {
     }
 
     private fun pushMockLocation(latitude: Double, longitude: Double) {
+        if (!providerReady) return
         val lm = locationManager ?: return
         val location = Location(LocationManager.GPS_PROVIDER).apply {
             this.latitude = latitude
@@ -252,8 +269,10 @@ class MockLocationService : Service() {
             lm.setTestProviderLocation(LocationManager.GPS_PROVIDER, location)
             logGpsEvent(location)
         } catch (_: SecurityException) {
-            // Not authorized as mock location app.
             reportMockAppError()
+        } catch (_: IllegalArgumentException) {
+            providerReady = false
+            ensureTestProvider()
         }
     }
 
