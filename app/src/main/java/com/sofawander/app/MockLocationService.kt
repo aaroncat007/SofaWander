@@ -25,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import com.google.gson.Gson
 
 class MockLocationService : Service() {
 
@@ -58,10 +59,19 @@ class MockLocationService : Service() {
     private var smoothingAlpha = 0.0
     private var smoothedLat: Double? = null
     private var smoothedLng: Double? = null
+    private var lastLat: Double = 0.0
+    private var lastLng: Double = 0.0
     private var bouncePhase = 0.0
-    @Volatile private var runId: Long = 0
+    @Volatile private var activeRunId: Long? = null
     private val db by lazy { AppDatabase.getInstance(this) }
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Progress tracking
+    private var totalRouteDistance = 0.0
+    private var distanceTraveled = 0.0
+    private var startTimeMs = 0L
+    private val NOTIFICATION_ID = 1001
+    private val CHANNEL_ID = "mock_location"
 
     private var providerReady = false
 
@@ -119,6 +129,17 @@ class MockLocationService : Service() {
                     isPaused = false
                     lastUpdateRealtime = SystemClock.elapsedRealtime()
 
+                    // 計算路線總距離
+                    totalRouteDistance = 0.0
+                    for (i in 0 until routePoints.size - 1) {
+                        totalRouteDistance += haversineMeters(
+                            routePoints[i].latitude, routePoints[i].longitude,
+                            routePoints[i + 1].latitude, routePoints[i + 1].longitude
+                        )
+                    }
+                    distanceTraveled = 0.0
+                    startTimeMs = System.currentTimeMillis()
+
                     // 初始化 test provider 並啟動路線播放循環
                     ensureTestProvider()
                     Log.d(TAG, "onStartCommand: providerReady=$providerReady, points=${routePoints.size}")
@@ -126,6 +147,7 @@ class MockLocationService : Service() {
 
                     setRunningFlag(true)
                     broadcastStatus(getString(R.string.status_running), "")
+                    updateNotification()
                     insertRunHistory(points.size, speedMode)
                 }
             }
@@ -135,6 +157,7 @@ class MockLocationService : Service() {
                     if (isPaused) getString(R.string.status_paused) else getString(R.string.status_running),
                     ""
                 )
+                updateNotification()
             }
             ACTION_STOP_ROUTE -> {
                 routePoints.clear()
@@ -145,6 +168,67 @@ class MockLocationService : Service() {
                 setRunningFlag(false)
                 broadcastStatus(getString(R.string.status_idle), "")
                 stopSelf()
+            }
+            ACTION_TELEPORT -> {
+                val lat = intent.getDoubleExtra(EXTRA_LAT, 0.0)
+                val lng = intent.getDoubleExtra(EXTRA_LNG, 0.0)
+                val walkMode = intent.getBooleanExtra(EXTRA_WALK_MODE, false)
+                
+                if (lat != 0.0 || lng != 0.0) {
+                    ensureTestProvider()
+                    
+                    if (walkMode) {
+                        // Walk Mode: 從目前位置走到目標
+                        var startLat = lastLat
+                        var startLng = lastLng
+                        
+                        if (startLat == 0.0 || startLng == 0.0) {
+                            val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                            try {
+                                val lastKnown = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER) 
+                                             ?: lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                                if (lastKnown != null) {
+                                    startLat = lastKnown.latitude
+                                    startLng = lastKnown.longitude
+                                } else {
+                                    startLat = lat
+                                    startLng = lng
+                                }
+                            } catch (_: SecurityException) {
+                                startLat = lat
+                                startLng = lng
+                            }
+                        }
+                        
+                        val points = listOf(RoutePoint(startLat, startLng), RoutePoint(lat, lng))
+                        routePoints.clear()
+                        routePoints.addAll(points)
+                        currentSegmentIndex = 0
+                        distanceOnSegment = 0.0
+                        isForward = true
+                        pauseUntilRealtime = 0L
+                        speedMetersPerSecond = SPEED_WALK
+                        currentSegmentSpeed = SPEED_WALK
+                        isPaused = false
+                        lastUpdateRealtime = SystemClock.elapsedRealtime()
+                        
+                        totalRouteDistance = haversineMeters(startLat, startLng, lat, lng)
+                        distanceTraveled = 0.0
+                        startTimeMs = System.currentTimeMillis()
+                        
+                        startRouteLoop()
+                        setRunningFlag(true)
+                        broadcastStatus(getString(R.string.status_running), "Walking to $lat, $lng")
+                        broadcastRoute(points)
+                        updateNotification()
+                    } else {
+                        // Instant Jump
+                        pushMockLocation(lat, lng)
+                        broadcastStatus(getString(R.string.status_teleported), "Jumped to $lat, $lng")
+                        broadcastProgress()
+                        broadcastRoute(emptyList())
+                    }
+                }
             }
         }
         return START_STICKY
@@ -163,27 +247,85 @@ class MockLocationService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun startInForeground() {
-        val channelId = "mock_location"
         val notificationManager =
             getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                channelId,
+                CHANNEL_ID,
                 "Mock Location",
                 NotificationManager.IMPORTANCE_LOW
             )
             notificationManager.createNotificationChannel(channel)
         }
 
-        val notification: Notification = NotificationCompat.Builder(this, channelId)
+        val notification = buildNotification("Waiting for route...")
+        startForeground(NOTIFICATION_ID, notification)
+    }
+
+    private fun buildNotification(contentText: String): Notification {
+        val pauseIntent = Intent(this, MockLocationService::class.java).apply {
+            action = ACTION_PAUSE_ROUTE
+        }
+        val stopIntent = Intent(this, MockLocationService::class.java).apply {
+            action = ACTION_STOP_ROUTE
+        }
+
+        val pausePending = android.app.PendingIntent.getService(
+            this, 0, pauseIntent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        val stopPending = android.app.PendingIntent.getService(
+            this, 1, stopIntent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText("Mocking location is running")
+            .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setOngoing(true)
-            .build()
+            .setOnlyAlertOnce(true)
 
-        startForeground(1001, notification)
+        if (routePoints.size >= 2) {
+            val pauseLabel = if (isPaused) "▶ 繼續" else "⏸ 暫停"
+            builder.addAction(0, pauseLabel, pausePending)
+            builder.addAction(0, "⏹ 停止", stopPending)
+        }
+
+        return builder.build()
+    }
+
+    private fun updateNotification() {
+        val elapsed = System.currentTimeMillis() - startTimeMs
+        val distKm = distanceTraveled / 1000.0
+        val totalKm = totalRouteDistance / 1000.0
+        val speedKmh = currentSegmentSpeed * 3.6
+        val elapsedStr = formatDuration(elapsed)
+        val etaMs = if (distanceTraveled > 0) {
+            ((totalRouteDistance - distanceTraveled) / (distanceTraveled / elapsed) * 1.0).toLong()
+        } else 0L
+        val etaStr = formatDuration(elapsed + etaMs)
+
+        val text = "%.2f/%.2f km | %s/%s | %.1f km/h".format(
+            distKm, totalKm, elapsedStr, etaStr, speedKmh
+        )
+
+        val notification = buildNotification(text)
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_ID, notification)
+    }
+
+    private fun formatDuration(ms: Long): String {
+        val totalSec = ms / 1000
+        val min = totalSec / 60
+        val sec = totalSec % 60
+        return if (min >= 60) {
+            val hr = min / 60
+            "%d:%02d:%02d".format(hr, min % 60, sec)
+        } else {
+            "%02d:%02d".format(min, sec)
+        }
     }
 
     private fun startRouteLoop() {
@@ -264,6 +406,8 @@ class MockLocationService : Service() {
             time = System.currentTimeMillis()
             elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
         }
+        lastLat = latitude
+        lastLng = longitude
 
         try {
             lm.setTestProviderLocation(LocationManager.GPS_PROVIDER, location)
@@ -356,15 +500,19 @@ class MockLocationService : Service() {
             }
 
             if (remainingMove < available) {
+                distanceTraveled += remainingMove
                 distanceOnSegment += remainingMove
                 val fraction = distanceOnSegment / segmentLength
                 val lat = start.latitude + (end.latitude - start.latitude) * fraction
                 val lng = start.longitude + (end.longitude - start.longitude) * fraction
                 val adjusted = applyRealism(lat, lng)
                 pushMockLocation(adjusted.first, adjusted.second)
+                broadcastProgress()
+                updateNotification()
                 return
             }
 
+            distanceTraveled += available
             remainingMove -= available
             currentSegmentIndex = nextIndex
             distanceOnSegment = 0.0
@@ -465,24 +613,23 @@ class MockLocationService : Service() {
             status = RUN_STATUS_RUNNING
         )
         ioScope.launch {
-            runId = db.runHistoryDao().insert(entity)
+            activeRunId = db.runHistoryDao().insert(entity)
         }
     }
 
     private fun finishRunHistory(status: String) {
-        if (runId <= 0) return
+        val id = activeRunId ?: return
+        activeRunId = null
         val end = System.currentTimeMillis()
-        val id = runId
-        runId = 0
         ioScope.launch {
             db.runHistoryDao().updateEnd(id, end, status)
         }
     }
 
     private fun logGpsEvent(location: Location) {
-        if (runId <= 0) return
+        val rid = activeRunId ?: return
         val event = GpsEventEntity(
-            runId = runId,
+            runId = rid,
             timestamp = System.currentTimeMillis(),
             lat = location.latitude,
             lng = location.longitude,
@@ -496,12 +643,35 @@ class MockLocationService : Service() {
 
     private fun broadcastStatus(status: String, message: String) {
         val intent = Intent(ACTION_MOCK_STATUS).apply {
+            setPackage(packageName)
             putExtra(EXTRA_STATUS, status)
             putExtra(EXTRA_MESSAGE, message)
         }
         sendBroadcast(intent)
     }
 
+    private fun broadcastProgress() {
+        val elapsed = System.currentTimeMillis() - startTimeMs
+        val intent = Intent(ACTION_MOCK_PROGRESS).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_DISTANCE_TRAVELED, distanceTraveled)
+            putExtra(EXTRA_TOTAL_DISTANCE, totalRouteDistance)
+            putExtra(EXTRA_ELAPSED_MS, elapsed)
+            putExtra(EXTRA_CURRENT_SPEED_KMH, currentSegmentSpeed * 3.6)
+            putExtra(EXTRA_LAT, lastLat)
+            putExtra(EXTRA_LNG, lastLng)
+        }
+        sendBroadcast(intent)
+    }
+
+    private fun broadcastRoute(points: List<RoutePoint>) {
+        val json = Gson().toJson(points)
+        val intent = Intent(ACTION_ROUTE_UPDATED).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_ROUTE_JSON, json)
+        }
+        sendBroadcast(intent)
+    }
     private fun setRunningFlag(isRunning: Boolean) {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putBoolean(PREF_KEY_RUNNING, isRunning).apply()
@@ -514,6 +684,11 @@ class MockLocationService : Service() {
         const val ACTION_START_ROUTE = "com.sofawander.app.ACTION_START_ROUTE"
         const val ACTION_PAUSE_ROUTE = "com.sofawander.app.ACTION_PAUSE_ROUTE"
         const val ACTION_STOP_ROUTE = "com.sofawander.app.ACTION_STOP_ROUTE"
+        const val ACTION_TELEPORT = "com.sofawander.app.ACTION_TELEPORT"
+        const val ACTION_ROUTE_UPDATED = "com.sofawander.app.ACTION_ROUTE_UPDATED"
+        const val EXTRA_WALK_MODE = "extra_walk_mode"
+        const val EXTRA_LAT = "extra_lat"
+        const val EXTRA_LNG = "extra_lng"
         const val EXTRA_ROUTE_JSON = "extra_route_json"
         const val EXTRA_SPEED_MODE = "extra_speed_mode"
         const val EXTRA_SPEED_MIN_KMH = "extra_speed_min_kmh"
@@ -537,8 +712,14 @@ class MockLocationService : Service() {
         private const val UPDATE_INTERVAL_MS = 1000L
         private const val SPEED_MODE_JOG = 1
         private const val SPEED_MODE_DRIVE = 2
-        private const val SPEED_WALK = 1.4
-        private const val SPEED_JOG = 2.8
+        private const val SPEED_WALK = 2.5
+        private const val SPEED_JOG = 4.0
         private const val SPEED_DRIVE = 13.9
+
+        const val ACTION_MOCK_PROGRESS = "com.sofawander.app.MOCK_PROGRESS"
+        const val EXTRA_DISTANCE_TRAVELED = "extra_distance_traveled"
+        const val EXTRA_TOTAL_DISTANCE = "extra_total_distance"
+        const val EXTRA_ELAPSED_MS = "extra_elapsed_ms"
+        const val EXTRA_CURRENT_SPEED_KMH = "extra_current_speed_kmh"
     }
 }

@@ -15,6 +15,7 @@ import android.provider.Settings
 import android.text.InputFilter
 import android.text.Spanned
 import android.view.MotionEvent
+import android.view.View
 import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -45,16 +46,24 @@ import kotlinx.coroutines.launch
 import org.maplibre.android.MapLibre
 import org.maplibre.android.WellKnownTileServer
 import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.android.utils.BitmapUtils
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.gson.Gson
 import com.google.android.gms.location.LocationServices
+import android.graphics.drawable.Drawable
+import android.view.inputmethod.EditorInfo
+import android.location.Geocoder
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -69,7 +78,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var favoriteAdapter: FavoriteAdapter
     private lateinit var historyAdapter: RunHistoryAdapter
     private var selectedFavoriteId: Long? = null
+    private var selectedPointSource: GeoJsonSource? = null
     private var lastTappedPoint: RoutePoint? = null
+    private var currentMockLat: Double = 0.0
+    private var currentMockLng: Double = 0.0
 
     private val openDocumentLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -156,13 +168,89 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context, intent: Intent) {
             val status = intent.getStringExtra(MockLocationService.EXTRA_STATUS) ?: return
             val message = intent.getStringExtra(MockLocationService.EXTRA_MESSAGE).orEmpty()
+            android.util.Log.d("MockApp", "Status received: $status")
             binding.textStatus.text = status
             binding.textError.text = message
 
-            // 根據服務狀態同步更新 Start Route 按鈕
             val running = status == getString(R.string.status_running) || status == getString(R.string.status_paused)
             isRouteRunning = running
             binding.buttonStartRoute.text = if (running) "Stop Route" else "Start Route"
+            binding.layoutPlaybackStats.visibility = if (running) View.VISIBLE else View.GONE
+        }
+    }
+
+    private val mockProgressReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val traveled = intent.getDoubleExtra(MockLocationService.EXTRA_DISTANCE_TRAVELED, 0.0)
+            val total = intent.getDoubleExtra(MockLocationService.EXTRA_TOTAL_DISTANCE, 0.0)
+            val elapsedMs = intent.getLongExtra(MockLocationService.EXTRA_ELAPSED_MS, 0L)
+            val speedKmh = intent.getDoubleExtra(MockLocationService.EXTRA_CURRENT_SPEED_KMH, 0.0)
+            
+            // 獲取目前點位置（用於跳轉對話框距離顯示）
+            val lat = intent.getDoubleExtra(MockLocationService.EXTRA_LAT, 0.0)
+            val lng = intent.getDoubleExtra(MockLocationService.EXTRA_LNG, 0.0)
+            if (lat != 0.0) {
+                currentMockLat = lat
+                currentMockLng = lng
+            }
+
+            binding.textPlaybackDistance.text = formatDistance(traveled) + " / " + formatDistance(total)
+
+            val elapsedStr = formatDuration(elapsedMs)
+            val etaMs = if (traveled > 0) {
+                ((total - traveled) / (traveled / elapsedMs)).toLong()
+            } else 0L
+            val etaStr = formatDuration(elapsedMs + etaMs)
+            binding.textPlaybackTime.text = "$elapsedStr / $etaStr"
+
+            binding.textPlaybackSpeed.text = "%.1f km/h".format(speedKmh)
+            
+            // 確保行走跳轉時也會顯示底部統計條
+            if (binding.layoutPlaybackStats.visibility != View.VISIBLE) {
+                android.util.Log.d("MockApp", "Showing stats bar via progress update")
+                binding.layoutPlaybackStats.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    private val mockRouteReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val json = intent.getStringExtra(MockLocationService.EXTRA_ROUTE_JSON) ?: return
+            android.util.Log.d("MockApp", "Route received, length: ${json.length}")
+            try {
+                val type = object : com.google.gson.reflect.TypeToken<List<RoutePoint>>() {}.type
+                val points: List<RoutePoint> = Gson().fromJson(json, type)
+                
+                if (points.isNotEmpty()) {
+                    routePoints.clear()
+                    routePoints.addAll(points)
+                    updateRouteLine()
+                    
+                    // 接收到路徑時，強迫顯示統計條 (適用于 Walk Mode)
+                    if (binding.layoutPlaybackStats.visibility != View.VISIBLE) {
+                        binding.layoutPlaybackStats.visibility = View.VISIBLE
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MockApp", "Error parsing walk route", e)
+            }
+        }
+    }
+
+    private fun formatDistance(meters: Double): String {
+        return if (meters >= 1000) "%.2f km".format(meters / 1000.0)
+        else "%.0f m".format(meters)
+    }
+
+    private fun formatDuration(ms: Long): String {
+        val totalSec = ms / 1000
+        val min = totalSec / 60
+        val sec = totalSec % 60
+        return if (min >= 60) {
+            val hr = min / 60
+            "%d:%02d:%02d".format(hr, min % 60, sec)
+        } else {
+            "%02d:%02d".format(min, sec)
         }
     }
 
@@ -203,11 +291,14 @@ class MainActivity : AppCompatActivity() {
         setupJoystick()
 
         // 註冊 MockLocationService 狀態接收器
-        val filter = android.content.IntentFilter(MockLocationService.ACTION_MOCK_STATUS)
+        val statusFilter = android.content.IntentFilter(MockLocationService.ACTION_MOCK_STATUS)
+        val progressFilter = android.content.IntentFilter(MockLocationService.ACTION_MOCK_PROGRESS)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(mockStatusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(mockStatusReceiver, statusFilter, Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(mockProgressReceiver, progressFilter, Context.RECEIVER_NOT_EXPORTED)
         } else {
-            registerReceiver(mockStatusReceiver, filter)
+            registerReceiver(mockStatusReceiver, statusFilter)
+            registerReceiver(mockProgressReceiver, progressFilter)
         }
 
         // Android 13+ 通知權限動態請求
@@ -371,6 +462,17 @@ class MainActivity : AppCompatActivity() {
         binding.btnLocation.setOnClickListener {
             centerToCurrentLocation()
         }
+
+        binding.btnSearch.setOnClickListener {
+            performSearch()
+        }
+
+        binding.editSearch.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                performSearch()
+                true
+            } else false
+        }
     }
 
     private fun setupMap() {
@@ -387,6 +489,10 @@ class MainActivity : AppCompatActivity() {
                     lastTappedPoint = RoutePoint(point.latitude, point.longitude)
                     updateRouteLine()
                     updatePointCount()
+                } else {
+                    // 非編輯模式下，點擊地圖即彈出跳轉
+                    updateSelectedPointSource(point)
+                    showTeleportDialog(point)
                 }
                 true
             }
@@ -549,17 +655,48 @@ class MainActivity : AppCompatActivity() {
 
         // 以圖標 (Pin) 替代原本的 CircleLayer 作為點擊節點
         if (style.getLayer(POINTS_LAYER_ID) == null) {
-            val symbolLayer = org.maplibre.android.style.layers.SymbolLayer(
+            val pointLayer = org.maplibre.android.style.layers.SymbolLayer(
                 POINTS_LAYER_ID,
                 POINTS_SOURCE_ID
             ).withProperties(
                 PropertyFactory.iconImage("route-pin-icon"),
-                PropertyFactory.iconSize(1.5f),
-                PropertyFactory.iconAnchor(org.maplibre.android.style.layers.Property.ICON_ANCHOR_BOTTOM),
+                PropertyFactory.iconSize(0.6f),
                 PropertyFactory.iconAllowOverlap(true),
-                PropertyFactory.iconIgnorePlacement(true)
+                PropertyFactory.iconIgnorePlacement(true),
+                PropertyFactory.iconOffset(arrayOf(0f, -15f))
             )
-            style.addLayerAbove(symbolLayer, ROUTE_ARROW_LAYER_ID)
+            style.addLayerAbove(pointLayer, ROUTE_ARROW_LAYER_ID)
+        }
+
+        // --- 加入單點選取的 Pin 點圖層 ---
+        getBitmapFromVectorDrawable(this, R.drawable.ic_location)?.let { bitmap ->
+            style.addImage(ICON_ID_SELECTED, bitmap)
+        }
+        if (style.getSourceAs<GeoJsonSource>(SOURCE_ID_SELECTED) == null) {
+            style.addSource(GeoJsonSource(SOURCE_ID_SELECTED))
+        }
+        if (style.getLayer(LAYER_ID_SELECTED) == null) {
+            val selectedLayer = SymbolLayer(LAYER_ID_SELECTED, SOURCE_ID_SELECTED).withProperties(
+                PropertyFactory.iconImage(ICON_ID_SELECTED),
+                PropertyFactory.iconSize(1.0f),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true),
+                PropertyFactory.iconOffset(arrayOf(0f, -18f)),
+                PropertyFactory.iconColor(android.graphics.Color.RED)
+            )
+            style.addLayer(selectedLayer)
+        }
+    }
+
+    private fun updateSelectedPointSource(latLng: org.maplibre.android.geometry.LatLng?) {
+        val map = mapLibre ?: return
+        val style = map.style ?: return
+        val source = style.getSourceAs<GeoJsonSource>(SOURCE_ID_SELECTED) ?: return
+        if (latLng == null) {
+            source.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(arrayOf()))
+        } else {
+            lastTappedPoint = RoutePoint(latLng.latitude, latLng.longitude)
+            source.setGeoJson(org.maplibre.geojson.Feature.fromGeometry(Point.fromLngLat(latLng.longitude, latLng.latitude)))
         }
     }
 
@@ -817,12 +954,18 @@ class MainActivity : AppCompatActivity() {
         return sb.toString()
     }
 
-    private fun showTeleportDialog() {
+    private fun showTeleportDialog(initialLatLng: org.maplibre.android.geometry.LatLng? = null) {
         val view = layoutInflater.inflate(R.layout.dialog_teleport, null)
         val editCoords = view.findViewById<android.widget.EditText>(R.id.editCoords)
+        
+        if (initialLatLng != null) {
+            editCoords.setText("%.6f, %.6f".format(initialLatLng.latitude, initialLatLng.longitude))
+        }
+
         val textDistanceStatus = view.findViewById<android.widget.TextView>(R.id.textDistanceStatus)
         val btnFormat = view.findViewById<android.widget.Button>(R.id.btnFormat)
-        val btnPaste = view.findViewById<android.widget.Button>(R.id.btnPaste)
+        val btnPaste = view.findViewById<android.widget.ImageButton>(R.id.btnPaste)
+        val checkWalkMode = view.findViewById<android.widget.CheckBox>(R.id.checkWalkMode)
         val btnCancel = view.findViewById<android.widget.Button>(R.id.btnCancel)
         val btnTeleportAction = view.findViewById<android.widget.Button>(R.id.btnTeleportAction)
 
@@ -830,6 +973,57 @@ class MainActivity : AppCompatActivity() {
             .setView(view)
             .setCancelable(true)
             .create()
+
+        val updateHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        val updateRunnable = object : Runnable {
+            override fun run() {
+                val raw = editCoords.text.toString()
+                val parts = raw.split(",")
+                if (parts.size >= 2) {
+                    val targetLat = parts[0].trim().toDoubleOrNull()
+                    val targetLng = parts[1].trim().toDoubleOrNull()
+                    if (targetLat != null && targetLng != null) {
+                        // 1. 優先使用模擬位置
+                        var startLat = currentMockLat
+                        var startLng = currentMockLng
+                        
+                        // 2. 如果沒在模擬，使用地圖顯示的當前位置 (Map Location Component)
+                        if (startLat == 0.0) {
+                            val mapLoc = mapLibre?.locationComponent?.lastKnownLocation
+                            if (mapLoc != null) {
+                                startLat = mapLoc.latitude
+                                startLng = mapLoc.longitude
+                            }
+                        }
+                        
+                        // 3. 如果還是沒有，嘗試獲取真實位置 (保底)
+                        if (startLat == 0.0) {
+                            try {
+                                val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                                val lastKnown = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                                             ?: lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                                if (lastKnown != null) {
+                                    startLat = lastKnown.latitude
+                                    startLng = lastKnown.longitude
+                                }
+                            } catch (_: SecurityException) {}
+                        }
+                        
+                        if (startLat != 0.0) {
+                            val dist = calculateDistance(startLat, startLng, targetLat, targetLng)
+                            val cooldown = calculateCooldown(dist)
+                            textDistanceStatus.text = "Distance: %s - Cooldown: %ds".format(formatDistance(dist), cooldown)
+                        } else {
+                            textDistanceStatus.text = "Distance: Unknown - Click map first"
+                        }
+                    }
+                }
+                updateHandler.postDelayed(this, 1000)
+            }
+        }
+        
+        dialog.setOnShowListener { updateHandler.post(updateRunnable) }
+        dialog.setOnDismissListener { updateHandler.removeCallbacks(updateRunnable) }
 
         btnCancel.setOnClickListener { dialog.dismiss() }
 
@@ -853,6 +1047,18 @@ class MainActivity : AppCompatActivity() {
                 val lat = parts[0].trim().toDoubleOrNull()
                 val lng = parts[1].trim().toDoubleOrNull()
                 if (lat != null && lng != null) {
+                    val intent = Intent(this@MainActivity, MockLocationService::class.java).apply {
+                        action = MockLocationService.ACTION_TELEPORT
+                        putExtra(MockLocationService.EXTRA_LAT, lat)
+                        putExtra(MockLocationService.EXTRA_LNG, lng)
+                        putExtra(MockLocationService.EXTRA_WALK_MODE, checkWalkMode.isChecked)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        startService(intent)
+                    }
+
                     mapLibre?.animateCamera(
                         CameraUpdateFactory.newLatLngZoom(
                             org.maplibre.android.geometry.LatLng(lat, lng),
@@ -1103,6 +1309,32 @@ class MainActivity : AppCompatActivity() {
 
     private fun updatePointCount() {
         binding.textPointCount.text = getString(R.string.label_point_count, routePoints.size)
+        updateRouteStats()
+    }
+
+    private fun updateRouteStats() {
+        if (routePoints.size < 2) {
+            binding.textRouteStats.text = "📍 ${routePoints.size} 點 | 📏 0 m"
+            return
+        }
+        var totalDist = 0.0
+        for (i in 0 until routePoints.size - 1) {
+            totalDist += haversineMeters(
+                routePoints[i].latitude, routePoints[i].longitude,
+                routePoints[i + 1].latitude, routePoints[i + 1].longitude
+            )
+        }
+        val speedMode = binding.spinnerSpeedMode.selectedItemPosition
+        val speedMps = when (speedMode) {
+            1 -> 2.8   // Jog
+            2 -> 13.9  // Drive
+            else -> 1.4 // Walk
+        }
+        val speedKmh = speedMps * 3.6
+        val estSeconds = totalDist / speedMps
+        val distStr = if (totalDist >= 1000) "%.2f km".format(totalDist / 1000.0) else "%.0f m".format(totalDist)
+        val timeStr = formatDuration((estSeconds * 1000).toLong())
+        binding.textRouteStats.text = "📍 ${routePoints.size} 點 | 📏 $distStr | ⏱ ~$timeStr | %.1f km/h".format(speedKmh)
     }
 
     private fun ensurePermissionsAndStart() {
@@ -1435,6 +1667,18 @@ class MainActivity : AppCompatActivity() {
             IntentFilter(MockLocationService.ACTION_MOCK_STATUS),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
+        ContextCompat.registerReceiver(
+            this,
+            mockProgressReceiver,
+            IntentFilter(MockLocationService.ACTION_MOCK_PROGRESS),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        ContextCompat.registerReceiver(
+            this,
+            mockRouteReceiver,
+            IntentFilter(MockLocationService.ACTION_ROUTE_UPDATED),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         syncStatusFromPrefs()
         if (!isLocationEnabled()) {
             binding.textStatus.setText(R.string.status_error)
@@ -1453,9 +1697,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
-        mapView.onStop()
-        unregisterReceiver(mockStatusReceiver)
         super.onStop()
+        mapView.onStop()
+        try {
+            unregisterReceiver(mockStatusReceiver)
+            unregisterReceiver(mockProgressReceiver)
+            unregisterReceiver(mockRouteReceiver)
+        } catch (e: Exception) {
+            android.util.Log.e("MockApp", "Error unregistering receivers", e)
+        }
     }
 
     override fun onDestroy() {
@@ -1505,6 +1755,17 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val isRunning = prefs.getBoolean(PREF_KEY_RUNNING, false)
         binding.textStatus.setText(if (isRunning) R.string.status_running else R.string.status_idle)
+        
+        // 如果正在執行，則恢復顯示統計條
+        if (isRunning) {
+            binding.layoutPlaybackStats.visibility = View.VISIBLE
+            binding.buttonStartRoute.text = "Stop Route"
+            isRouteRunning = true
+        } else {
+            binding.layoutPlaybackStats.visibility = View.GONE
+            binding.buttonStartRoute.text = "Start Route"
+            isRouteRunning = false
+        }
     }
 
     private fun isLocationEnabled(): Boolean {
@@ -1529,6 +1790,9 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_SMOOTHING_ALPHA = 1.0
         private const val REQUEST_CODE_PERMISSIONS = 1001
         private const val MAP_STYLE_URL = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json"
+        private const val SOURCE_ID_SELECTED = "selected-point-source"
+        private const val LAYER_ID_SELECTED = "selected-point-layer"
+        private const val ICON_ID_SELECTED = "selected-point-icon"
         
         private const val ROUTE_SOURCE_ID = "route-source"
         private const val ROUTE_LAYER_ID = "route-layer"
@@ -1536,8 +1800,90 @@ class MainActivity : AppCompatActivity() {
         private const val POINTS_SOURCE_ID = "points-source"
         private const val POINTS_LAYER_ID = "points-layer"
 
-        private const val MAP_ROUTE_COLOR = "#2196F3"
+        private const val MAP_ROUTE_COLOR = "#21f380"
         private const val MAP_POINT_COLOR = "#FF5722"
         private const val MAP_POINT_STROKE = "#FFFFFF"
+    }
+
+    private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return r * c
+    }
+
+    private fun calculateCooldown(meters: Double): Int {
+        val km = meters / 1000.0
+        return when {
+            km < 0.25 -> 0
+            km < 0.5 -> 30
+            km < 1.0 -> 60
+            km < 5.0 -> 120
+            km < 10.0 -> 420
+            km < 25.0 -> 660
+            km < 50.0 -> 1200
+            km < 100.0 -> 2100
+            km < 250.0 -> 2700
+            km < 500.0 -> 3600
+            km < 1000.0 -> 4800
+            else -> 7200
+        }
+    }
+
+    private fun performSearch() {
+        val query = binding.editSearch.text.toString().trim()
+        if (query.isEmpty()) return
+
+        hideKeyboard()
+
+        // 1. 嘗試解析是否為座標 "lat, lng"
+        val parts = query.split(",")
+        if (parts.size >= 2) {
+            val lat = parts[0].trim().toDoubleOrNull()
+            val lng = parts[1].trim().toDoubleOrNull()
+            if (lat != null && lng != null) {
+                val point = org.maplibre.android.geometry.LatLng(lat, lng)
+                mapLibre?.animateCamera(org.maplibre.android.camera.CameraUpdateFactory.newLatLngZoom(point, 15.0))
+                updateSelectedPointSource(point)
+                showTeleportDialog(point)
+                return
+            }
+        }
+
+        // 2. 使用 Geocoder 搜尋地址
+        if (!Geocoder.isPresent()) {
+            Toast.makeText(this, "Geocoder not available", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val geocoder = Geocoder(this, Locale.getDefault())
+        try {
+            // 注意：API 33+ 有新的 getFromLocationName，這裡用舊的相容版或簡易版
+            val addresses = geocoder.getFromLocationName(query, 1)
+            if (addresses != null && addresses.isNotEmpty()) {
+                val addr = addresses[0]
+                val point = org.maplibre.android.geometry.LatLng(addr.latitude, addr.longitude)
+                mapLibre?.animateCamera(org.maplibre.android.camera.CameraUpdateFactory.newLatLngZoom(point, 15.0))
+                updateSelectedPointSource(point)
+                showTeleportDialog(point)
+            } else {
+                Toast.makeText(this, "找不到該地點", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MockApp", "Search error", e)
+            Toast.makeText(this, "搜尋出錯: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun hideKeyboard() {
+        val view = this.currentFocus
+        if (view != null) {
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            imm.hideSoftInputFromWindow(view.windowToken, 0)
+        }
     }
 }

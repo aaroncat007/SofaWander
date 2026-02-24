@@ -104,4 +104,5 @@
     <string name="error_no_permission">Location permission not granted.</string>
     <string name="error_notifications">Notification permission not granted.</string>
     <string name="error_location_disabled">Location is disabled. Please enable location services.</string>
+    <string name="status_teleported">Teleported</string>
 </resources>

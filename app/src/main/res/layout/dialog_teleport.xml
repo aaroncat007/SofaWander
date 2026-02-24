@@ -46,17 +46,36 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/checkWalkMode" />
 
-    <EditText
-        android:id="@+id/editCoords"
+    <LinearLayout
+        android:id="@+id/layoutCoordsInput"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:hint="40.75512, -73.9836"
-        android:inputType="text"
-        android:textColor="@color/black"
-        android:backgroundTint="@color/blue_500"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/labelCoords" />
+        app:layout_constraintTop_toBottomOf="@id/labelCoords">
+
+        <EditText
+            android:id="@+id/editCoords"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="40.75512, -73.9836"
+            android:inputType="text"
+            android:textColor="@color/black"
+            android:backgroundTint="@color/blue_500" />
+
+        <ImageButton
+            android:id="@+id/btnPaste"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_paste"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            app:tint="@color/blue_500" />
+    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/layoutActionButtons"
@@ -65,23 +84,14 @@
         android:orientation="horizontal"
         android:layout_marginTop="8dp"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/editCoords">
-
-        <Button
-            android:id="@+id/btnPaste"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="PASTE"
-            android:backgroundTint="@color/blue_500"
-            android:textColor="@color/white" />
+        app:layout_constraintTop_toBottomOf="@id/layoutCoordsInput">
 
         <Button
             android:id="@+id/btnFormat"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="FORMAT"
-            style="@style/Widget.AppCompat.Button.Borderless.Colored"
-            android:layout_marginStart="8dp" />
+            style="@style/Widget.AppCompat.Button.Borderless.Colored" />
     </LinearLayout>
 
     <TextView
@@ -127,8 +137,9 @@
             android:id="@+id/btnTeleportAction"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="TELEPORT"
-            style="@style/Widget.AppCompat.Button.Borderless.Colored" />
+            android:text="前往 (GO)"
+            android:backgroundTint="@color/blue_500"
+            android:textColor="@color/white" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
