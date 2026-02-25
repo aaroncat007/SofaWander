@@ -63,6 +63,27 @@ class MockLocationService : Service() {
     private var smoothedLng: Double? = null
     private var lastLat: Double = 0.0
     private var lastLng: Double = 0.0
+
+    private fun isInvalidLocation(lat: Double, lng: Double): Boolean {
+        // Checking for exactly 0,0 or very near 0,0 (Null Island)
+        return (kotlin.math.abs(lat) < 0.0001 && kotlin.math.abs(lng) < 0.0001)
+    }
+
+    private fun loadLastLocation() {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        lastLat = prefs.getFloat("pref_last_mock_lat", 0f).toDouble()
+        lastLng = prefs.getFloat("pref_last_mock_lng", 0f).toDouble()
+        Log.i(TAG, "Loaded last location from prefs: $lastLat, $lastLng")
+    }
+
+    private fun saveLastLocation(lat: Double, lng: Double) {
+        if (lat == 0.0 && lng == 0.0) return
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        prefs.edit()
+            .putFloat("pref_last_mock_lat", lat.toFloat())
+            .putFloat("pref_last_mock_lng", lng.toFloat())
+            .apply()
+    }
     private var bouncePhase = 0.0
     
     // Joystick state
@@ -87,6 +108,8 @@ class MockLocationService : Service() {
         super.onCreate()
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         
+        loadLastLocation()
+
         // Persistent background thread for all mock movements
         handlerThread = HandlerThread("MockLocationBackgroundThread").apply { start() }
         handler = Handler(handlerThread!!.looper)
@@ -126,21 +149,29 @@ class MockLocationService : Service() {
                             startLat = lastLat
                             startLng = lastLng
                         }
-                        if (startLat == 0.0 || startLng == 0.0) {
+                        if (isInvalidLocation(startLat, startLng)) {
                             val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
                             try {
                                 val lastKnown = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                                    ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                                if (lastKnown != null) {
+                                     ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                                if (lastKnown != null && !isInvalidLocation(lastKnown.latitude, lastKnown.longitude)) {
                                     startLat = lastKnown.latitude
                                     startLng = lastKnown.longitude
+                                } else if (!isInvalidLocation(lastLat, lastLng)) {
+                                    startLat = lastLat
+                                    startLng = lastLng
                                 } else {
                                     startLat = routePoints[0].latitude
                                     startLng = routePoints[0].longitude
                                 }
                             } catch (_: SecurityException) {
-                                startLat = routePoints[0].latitude
-                                startLng = routePoints[0].longitude
+                                if (!isInvalidLocation(lastLat, lastLng)) {
+                                    startLat = lastLat
+                                    startLng = lastLng
+                                } else {
+                                    startLat = routePoints[0].latitude
+                                    startLng = routePoints[0].longitude
+                                }
                             }
                         }
                         routePoints.add(0, RoutePoint(startLat, startLng))
@@ -251,19 +282,20 @@ class MockLocationService : Service() {
                         var startLat = intent.getDoubleExtra("extra_start_lat", 0.0)
                         var startLng = intent.getDoubleExtra("extra_start_lng", 0.0)
 
-                        if (startLat == 0.0 || startLng == 0.0) {
-                            startLat = lastLat
-                            startLng = lastLng
+                        if (isInvalidLocation(startLat, startLng)) {
+                            if (!isInvalidLocation(lastLat, lastLng)) {
+                                startLat = lastLat
+                                startLng = lastLng
+                            }
                         }
-
-                        if (startLat == 0.0 || startLng == 0.0) {
+                        if (isInvalidLocation(startLat, startLng)) {
                             val lm =
                                 getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
                             try {
                                 val lastKnown =
                                     lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
                                         ?: lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
-                                if (lastKnown != null) {
+                                if (lastKnown != null && !isInvalidLocation(lastKnown.latitude, lastKnown.longitude)) {
                                     startLat = lastKnown.latitude
                                     startLng = lastKnown.longitude
                                 } else {
@@ -330,19 +362,19 @@ class MockLocationService : Service() {
                         updateNotification()
                     }
                     
-                    if (lastLat == 0.0 && lastLng == 0.0) {
+                    if (isInvalidLocation(lastLat, lastLng)) {
                         val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
                         try {
                             val lastKnown = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                                 ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                            if (lastKnown != null) {
+                            if (lastKnown != null && !isInvalidLocation(lastKnown.latitude, lastKnown.longitude)) {
                                 lastLat = lastKnown.latitude
                                 lastLng = lastKnown.longitude
                             }
                         } catch (_: SecurityException) {
                         }
                     }
-                    if (lastLat == 0.0 && lastLng == 0.0) {
+                    if (isInvalidLocation(lastLat, lastLng)) {
                         // Prevent sending 0,0 to the system. Skip joystick.
                         isJoystickActive = false
                         return START_STICKY
@@ -512,7 +544,7 @@ class MockLocationService : Service() {
             override fun run() {
                 if (handlerThread == null || !isIdleLoopRunning) return
                 if (!isJoystickActive && routePoints.isEmpty()) {
-                    if (lastLat != 0.0 && lastLng != 0.0) {
+                    if (!isInvalidLocation(lastLat, lastLng)) {
                         if (!providerReady) {
                             ensureTestProvider()
                         }
@@ -599,8 +631,13 @@ class MockLocationService : Service() {
     }
 
     private fun pushMockLocation(latitude: Double, longitude: Double) {
+        if (isInvalidLocation(latitude, longitude)) {
+            Log.w(TAG, "pushMockLocation: Ignoring Null Island jump ($latitude, $longitude)")
+            return
+        }
         lastLat = latitude
         lastLng = longitude
+        saveLastLocation(latitude, longitude)
 
         if (!providerReady) {
             Log.w(TAG, "pushMockLocation: provider not ready, ignoring $latitude, $longitude")
@@ -635,7 +672,7 @@ class MockLocationService : Service() {
             try {
                 lm.setTestProviderLocation(p, location)
                 if (p == LocationManager.GPS_PROVIDER) logGpsEvent(location)
-                Log.i(TAG, "pushMockLocation: Successfully pushed to $p ($latitude, $longitude)")
+                // Log.i(TAG, "pushMockLocation: Successfully pushed to $p ($latitude, $longitude)")
             } catch (e: SecurityException) {
                 Log.e(TAG, "pushMockLocation SecurityException for $p: ${e.message}")
                 reportMockAppError()
@@ -694,7 +731,7 @@ class MockLocationService : Service() {
         if (routePoints.size < 2) return
         if (isPaused) {
             lastUpdateRealtime = SystemClock.elapsedRealtime()
-            if (lastLat != 0.0 && lastLng != 0.0) {
+            if (!isInvalidLocation(lastLat, lastLng)) {
                 pushMockLocation(lastLat, lastLng)
             }
             return
@@ -703,7 +740,7 @@ class MockLocationService : Service() {
         val now = SystemClock.elapsedRealtime()
         if (pauseUntilRealtime > now) {
             lastUpdateRealtime = now
-            if (lastLat != 0.0 && lastLng != 0.0) {
+            if (!isInvalidLocation(lastLat, lastLng)) {
                 pushMockLocation(lastLat, lastLng)
             }
             return

@@ -84,6 +84,11 @@ class MainActivity : AppCompatActivity() {
     private var hasSelectedPin: Boolean = false
     private var currentMockLat: Double = 0.0
     private var currentMockLng: Double = 0.0
+    private var isCameraLocked: Boolean = false
+
+    private fun isInvalidLocation(lat: Double, lng: Double): Boolean {
+        return kotlin.math.abs(lat) < 0.0001 && kotlin.math.abs(lng) < 0.0001
+    }
 
     private val openDocumentLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -198,9 +203,16 @@ class MainActivity : AppCompatActivity() {
             // 獲取目前點位置（用於跳轉對話框距離顯示）
             val lat = intent.getDoubleExtra(MockLocationService.EXTRA_LAT, 0.0)
             val lng = intent.getDoubleExtra(MockLocationService.EXTRA_LNG, 0.0)
-            if (lat != 0.0) {
+            if (!isInvalidLocation(lat, lng)) {
                 currentMockLat = lat
                 currentMockLng = lng
+                
+                // Persistence update
+                val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
+                prefs.edit()
+                    .putFloat("pref_last_mock_lat", lat.toFloat())
+                    .putFloat("pref_last_mock_lng", lng.toFloat())
+                    .apply()
             }
 
             binding.textPlaybackDistance.text = formatDistance(traveled) + " / " + formatDistance(total)
@@ -230,6 +242,15 @@ class MainActivity : AppCompatActivity() {
             if (binding.layoutPlaybackStats.visibility != View.VISIBLE) {
                 android.util.Log.d("MockApp", "Showing stats bar via progress update")
                 binding.layoutPlaybackStats.visibility = View.VISIBLE
+            }
+
+            // 相機鎖定跟隨邏輯
+            if (isCameraLocked && !isInvalidLocation(lat, lng)) {
+                mapLibre?.animateCamera(
+                    CameraUpdateFactory.newLatLng(
+                         org.maplibre.android.geometry.LatLng(lat, lng)
+                    )
+                )
             }
         }
     }
@@ -352,6 +373,11 @@ class MainActivity : AppCompatActivity() {
         mapView.onCreate(savedInstanceState)
         setupMap()
         updateRouteStats()
+        
+        // Initialize mock coordinates from persistence
+        val commonPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        currentMockLat = commonPrefs.getFloat("pref_last_mock_lat", 0f).toDouble()
+        currentMockLng = commonPrefs.getFloat("pref_last_mock_lng", 0f).toDouble()
 
         observeFavorites()
         observeHistory()
@@ -554,6 +580,41 @@ class MainActivity : AppCompatActivity() {
                 true
             } else false
         }
+
+        binding.btnViewOrigin.setOnClickListener {
+            if (routePoints.isNotEmpty()) {
+                val start = routePoints[0]
+                mapLibre?.animateCamera(
+                    CameraUpdateFactory.newLatLngZoom(
+                        org.maplibre.android.geometry.LatLng(start.latitude, start.longitude),
+                        16.0
+                    )
+                )
+            } else if (!isInvalidLocation(currentMockLat, currentMockLng)) {
+                mapLibre?.animateCamera(
+                    CameraUpdateFactory.newLatLngZoom(
+                        org.maplibre.android.geometry.LatLng(currentMockLat, currentMockLng),
+                        16.0
+                    )
+                )
+            }
+        }
+
+        binding.btnLock.setOnClickListener {
+            isCameraLocked = !isCameraLocked
+            if (isCameraLocked) {
+                binding.btnLock.setColorFilter(getColor(R.color.blue_500))
+                if (!isInvalidLocation(currentMockLat, currentMockLng)) {
+                    mapLibre?.animateCamera(
+                        CameraUpdateFactory.newLatLng(
+                            org.maplibre.android.geometry.LatLng(currentMockLat, currentMockLng)
+                        )
+                    )
+                }
+            } else {
+                binding.btnLock.clearColorFilter()
+            }
+        }
     }
 
     private fun setupMap() {
@@ -576,6 +637,16 @@ class MainActivity : AppCompatActivity() {
                     showTeleportDialog(point)
                 }
                 true
+            }
+
+            map.addOnCameraMoveStartedListener { reason ->
+                if (reason == org.maplibre.android.maps.MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) {
+                    if (isCameraLocked) {
+                        isCameraLocked = false
+                        binding.btnLock.clearColorFilter()
+                        android.util.Log.d("MockApp", "Camera unlocked due to user gesture")
+                    }
+                }
             }
 
             map.addOnMapLongClickListener { point ->
@@ -870,7 +941,7 @@ class MainActivity : AppCompatActivity() {
                     val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
                     val lastKnown = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
                                  ?: lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
-                    if (lastKnown != null) {
+                    if (lastKnown != null && !isInvalidLocation(lastKnown.latitude, lastKnown.longitude)) {
                         defaultLat = lastKnown.latitude
                         defaultLng = lastKnown.longitude
                     }
@@ -1080,7 +1151,7 @@ class MainActivity : AppCompatActivity() {
                 override fun onCanceledRequested(p0: com.google.android.gms.tasks.OnTokenCanceledListener) = this
             }
         ).addOnSuccessListener { location ->
-            if (location != null) {
+            if (location != null && location.latitude != 0.0 && location.longitude != 0.0) {
                 mapLibre?.animateCamera(
                     CameraUpdateFactory.newLatLngZoom(
                         org.maplibre.android.geometry.LatLng(location.latitude, location.longitude),
