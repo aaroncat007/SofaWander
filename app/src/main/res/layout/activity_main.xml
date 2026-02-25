@@ -132,7 +132,6 @@
                 app:tint="@color/icon_tint_selector" />
 
 
-
             <ImageButton
                 android:id="@+id/btnViewOrigin"
                 android:layout_width="44dp"
