@@ -235,126 +235,124 @@
 
         </LinearLayout>
 
-        <!-- Route Editor Overlay (Top Center) -->
-        <LinearLayout
+        <!-- Route Editor Overlay (Bottom CardView) -->
+        <androidx.cardview.widget.CardView
             android:id="@+id/layoutRouteEditor"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/route_panel_bg"
-            android:padding="16dp"
+            android:layout_margin="16dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="8dp"
             android:visibility="gone"
-            android:elevation="6dp"
-            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toTopOf="@id/layoutPlaybackStats"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="16dp"
-            android:layout_marginStart="64dp"
-            android:layout_marginEnd="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Tap Map to Add Route Points"
-                android:textStyle="bold"
-                android:textSize="14sp"
-                android:textColor="@color/white"
-                android:layout_gravity="center_horizontal"
-                android:layout_marginBottom="4dp"/>
-
-            <TextView
-                android:id="@+id/textRouteStats"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="📍 0 點 | 📏 0 m"
-                android:textSize="12sp"
-                android:textColor="#B0FFFFFF"
-                android:gravity="center"
-                android:layout_marginBottom="8dp"/>
+            app:layout_constraintEnd_toEndOf="parent">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="8dp">
+                android:orientation="vertical"
+                android:padding="16dp">
 
-                <androidx.appcompat.widget.AppCompatButton
-                    android:id="@+id/buttonLoadRoute"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
+                <TextView
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Load Route"
-                    android:textColor="@color/white"
-                    android:background="@drawable/route_panel_btn_bg"
-                    android:textAllCaps="false" />
+                    android:text="@string/instructions_route_edit"
+                    android:textStyle="bold"
+                    android:textSize="14sp"
+                    android:textColor="@color/slate_900"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginBottom="4dp"/>
 
-                <androidx.appcompat.widget.AppCompatButton
-                    android:id="@+id/buttonStartRoute"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
+                <TextView
+                    android:id="@+id/textRouteStats"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Start Route"
-                    android:layout_marginStart="8dp"
-                    android:textColor="@color/white"
-                    android:background="@drawable/route_panel_btn_bg"
-                    android:textAllCaps="false" />
-            </LinearLayout>
+                    android:text="📍 0 點 | 📏 0 m"
+                    android:textSize="12sp"
+                    android:textColor="@color/slate_500"
+                    android:gravity="center"
+                    android:layout_marginBottom="12dp"/>
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="8dp">
-
-                <androidx.appcompat.widget.AppCompatButton
-                    android:id="@+id/buttonSaveRoute"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/button_save_route"
-                    android:textColor="@color/white"
-                    android:background="@drawable/route_panel_btn_bg"
-                    android:textAllCaps="false" />
+                    android:orientation="horizontal"
+                    android:weightSum="5"
+                    android:gravity="center">
 
-                <androidx.appcompat.widget.AppCompatButton
-                    android:id="@+id/buttonUndoPoint"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:text="@string/button_undo_point"
-                    android:layout_marginStart="8dp"
-                    android:textColor="@color/white"
-                    android:background="@drawable/route_panel_btn_bg"
-                    android:textAllCaps="false" />
-            </LinearLayout>
+                    <ImageButton
+                        android:id="@+id/buttonLoadRoute"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_route"
+                        android:padding="12dp"
+                        android:scaleType="fitCenter"
+                        app:tint="@color/slate_700"
+                        android:contentDescription="@string/button_load_route_to_map" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                    <ImageButton
+                        android:id="@+id/buttonSaveRoute"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_heart"
+                        android:padding="12dp"
+                        android:scaleType="fitCenter"
+                        app:tint="@color/slate_700"
+                        android:contentDescription="@string/button_save_route" />
 
-                <androidx.appcompat.widget.AppCompatButton
-                    android:id="@+id/buttonClearRoute"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:text="@string/button_clear_route"
-                    android:textColor="@color/white"
-                    android:background="@drawable/route_panel_btn_bg"
-                    android:textAllCaps="false" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/buttonStartRoute"
+                        style="@style/Widget.MaterialComponents.Button"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1.5"
+                        android:text="@string/button_start"
+                        android:layout_marginHorizontal="4dp"
+                        app:backgroundTint="@color/blue_500" />
 
-                <androidx.appcompat.widget.AppCompatButton
+                    <ImageButton
+                        android:id="@+id/buttonUndoPoint"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_back"
+                        android:padding="12dp"
+                        android:scaleType="fitCenter"
+                        app:tint="@color/slate_700"
+                        android:contentDescription="@string/button_undo_point" />
+                    
+                    <ImageButton
+                        android:id="@+id/buttonClearRoute"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_delete"
+                        android:padding="12dp"
+                        android:scaleType="fitCenter"
+                        app:tint="@color/red_500"
+                        android:contentDescription="@string/button_clear_route" />
+
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnRouteEditorClose"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Close"
-                    android:layout_marginStart="8dp"
-                    android:textColor="@color/white"
-                    android:background="@drawable/route_panel_btn_bg"
-                    android:textAllCaps="false" />
+                    android:text="@string/button_cancel"
+                    android:textColor="@color/slate_500"
+                    android:layout_gravity="end"
+                    android:layout_marginTop="0dp" />
+
             </LinearLayout>
-        </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
         <!-- Playback Stats Bar (Bottom) -->
         <LinearLayout
@@ -400,6 +398,35 @@
                 android:textColor="@color/white"
                 android:textSize="12sp"
                 android:gravity="center"/>
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:background="#40FFFFFF"
+                android:layout_marginHorizontal="8dp"/>
+
+            <ImageButton
+                android:id="@+id/btnPlaybackPause"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_pause"
+                android:scaleType="fitCenter"
+                android:padding="4dp"
+                app:tint="@color/white"
+                android:contentDescription="@string/button_pause" />
+
+            <ImageButton
+                android:id="@+id/btnPlaybackStop"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_stop"
+                android:scaleType="fitCenter"
+                android:padding="4dp"
+                android:layout_marginStart="8dp"
+                app:tint="@color/white"
+                android:contentDescription="@string/button_stop" />
         </LinearLayout>
 
         <!-- Drawer/Settings Button -->
@@ -525,6 +552,18 @@
                     app:iconTint="@color/slate_900" />
 
                 <com.google.android.material.button.MaterialButton
+                    android:id="@+id/menuRouteList"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:text="@string/title_route_list"
+                    android:gravity="start|center_vertical"
+                    android:paddingStart="16dp"
+                    android:textColor="@color/slate_900"
+                    app:icon="@drawable/ic_route"
+                    app:iconTint="@color/slate_900" />
+
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/menuFavorites"
                     style="@style/Widget.MaterialComponents.Button.TextButton"
                     android:layout_width="match_parent"
@@ -586,7 +625,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="當前狀態"
+                        android:text="@string/label_current_state"
                         android:textSize="12sp"
                         android:textColor="@color/slate_400" />
                     

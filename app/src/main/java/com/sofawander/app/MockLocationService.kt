@@ -170,6 +170,19 @@ class MockLocationService : Service() {
                 broadcastStatus(getString(R.string.status_idle), "")
                 stopSelf()
             }
+            ACTION_UPDATE_SPEED -> {
+                val speedMinKmh = intent.getDoubleExtra(EXTRA_SPEED_MIN_KMH, 0.0)
+                val speedMaxKmh = intent.getDoubleExtra(EXTRA_SPEED_MAX_KMH, 0.0)
+                
+                speedMinMetersPerSecond = kmhToMps(speedMinKmh)
+                speedMaxMetersPerSecond = kmhToMps(speedMaxKmh)
+                if (speedMaxMetersPerSecond < speedMinMetersPerSecond) {
+                    speedMaxMetersPerSecond = speedMinMetersPerSecond
+                }
+                
+                // Immediately apply new speed to the current segment
+                currentSegmentSpeed = pickSegmentSpeed()
+            }
             ACTION_TELEPORT -> {
                 val lat = intent.getDoubleExtra(EXTRA_LAT, 0.0)
                 val lng = intent.getDoubleExtra(EXTRA_LNG, 0.0)
@@ -180,9 +193,14 @@ class MockLocationService : Service() {
                     
                     if (walkMode) {
                         // Walk Mode: 從目前位置走到目標
-                        var startLat = lastLat
-                        var startLng = lastLng
+                        var startLat = intent.getDoubleExtra("extra_start_lat", 0.0)
+                        var startLng = intent.getDoubleExtra("extra_start_lng", 0.0)
                         
+                        if (startLat == 0.0 || startLng == 0.0) {
+                            startLat = lastLat
+                            startLng = lastLng
+                        }
+
                         if (startLat == 0.0 || startLng == 0.0) {
                             val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
                             try {
@@ -289,9 +307,9 @@ class MockLocationService : Service() {
             .setOnlyAlertOnce(true)
 
         if (routePoints.size >= 2) {
-            val pauseLabel = if (isPaused) "▶ 繼續" else "⏸ 暫停"
+            val pauseLabel = if (isPaused) getString(R.string.action_resume) else getString(R.string.action_pause)
             builder.addAction(0, pauseLabel, pausePending)
-            builder.addAction(0, "⏹ 停止", stopPending)
+            builder.addAction(0, getString(R.string.action_stop), stopPending)
         }
 
         return builder.build()
@@ -667,7 +685,7 @@ class MockLocationService : Service() {
     }
 
     private fun broadcastRoute(points: List<RoutePoint>) {
-        val json = Gson().toJson(points)
+        val json = RouteJson.toJson(points)
         val intent = Intent(ACTION_ROUTE_UPDATED).apply {
             setPackage(packageName)
             putExtra(EXTRA_ROUTE_JSON, json)
@@ -686,6 +704,7 @@ class MockLocationService : Service() {
         const val ACTION_START_ROUTE = "com.sofawander.app.ACTION_START_ROUTE"
         const val ACTION_PAUSE_ROUTE = "com.sofawander.app.ACTION_PAUSE_ROUTE"
         const val ACTION_STOP_ROUTE = "com.sofawander.app.ACTION_STOP_ROUTE"
+        const val ACTION_UPDATE_SPEED = "com.sofawander.app.ACTION_UPDATE_SPEED"
         const val ACTION_TELEPORT = "com.sofawander.app.ACTION_TELEPORT"
         const val ACTION_ROUTE_UPDATED = "com.sofawander.app.ACTION_ROUTE_UPDATED"
         const val EXTRA_WALK_MODE = "extra_walk_mode"

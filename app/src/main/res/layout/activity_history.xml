@@ -29,7 +29,7 @@
         android:id="@+id/textEmpty"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="尚無紀錄"
+        android:text="@string/label_no_history_records"
         android:textColor="@color/slate_400"
         android:visibility="gone"
         app:layout_constraintTop_toTopOf="parent"

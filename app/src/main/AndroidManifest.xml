@@ -38,6 +38,16 @@
             android:label="History"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.RouteListActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MockGps" />
+
+        <activity
+            android:name=".ui.FavoriteListActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MockGps" />
+
         <service
             android:name=".MockLocationService"
             android:exported="false"

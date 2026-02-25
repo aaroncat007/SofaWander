@@ -17,15 +17,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <Button
-        android:id="@+id/btnFavorites"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="FAVORITES"
-        style="@style/Widget.AppCompat.Button.Borderless.Colored"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
     <CheckBox
         android:id="@+id/checkWalkMode"
         android:layout_width="wrap_content"
@@ -34,7 +25,7 @@
         android:textColor="@color/black"
         android:textStyle="bold"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/btnFavorites" />
+        app:layout_constraintTop_toTopOf="parent" />
 
     <TextView
         android:id="@+id/labelCoords"
@@ -75,6 +66,17 @@
             android:padding="8dp"
             android:scaleType="fitCenter"
             app:tint="@color/blue_500" />
+
+        <ImageButton
+            android:id="@+id/btnTeleportAddFavorite"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_heart"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            app:tint="@color/red_500"
+            android:contentDescription="Add to Favorites" />
     </LinearLayout>
 
     <LinearLayout

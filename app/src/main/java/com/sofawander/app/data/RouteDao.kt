@@ -11,6 +11,9 @@ interface RouteDao {
     @Query("SELECT * FROM routes ORDER BY created_at DESC")
     fun getAllRoutes(): Flow<List<RouteEntity>>
 
+    @Query("SELECT * FROM routes WHERE id = :id LIMIT 1")
+    suspend fun getRouteById(id: Long): RouteEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(route: RouteEntity): Long
 

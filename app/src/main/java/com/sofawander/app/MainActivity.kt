@@ -35,7 +35,6 @@ import com.sofawander.app.data.RoutePoint
 import com.sofawander.app.databinding.ActivityMainBinding
 import com.sofawander.app.ui.FavoriteAdapter
 import com.sofawander.app.ui.FavoriteItem
-import com.sofawander.app.ui.FavoriteListDialog
 import com.sofawander.app.ui.GpsEventAdapter
 import com.sofawander.app.ui.GpsEventItem
 import com.sofawander.app.ui.RunHistoryAdapter
@@ -82,6 +81,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedFavoriteId: Long? = null
     private var selectedPointSource: GeoJsonSource? = null
     private var lastTappedPoint: RoutePoint? = null
+    private var hasSelectedPin: Boolean = false
     private var currentMockLat: Double = 0.0
     private var currentMockLng: Double = 0.0
 
@@ -179,6 +179,12 @@ class MainActivity : AppCompatActivity() {
             isRouteRunning = running
             binding.buttonStartRoute.text = if (running) "Stop Route" else "Start Route"
             binding.layoutPlaybackStats.visibility = if (running) View.VISIBLE else View.GONE
+
+            if (status == getString(R.string.status_paused)) {
+                binding.btnPlaybackPause.setImageResource(R.drawable.ic_play)
+            } else {
+                binding.btnPlaybackPause.setImageResource(R.drawable.ic_pause)
+            }
         }
     }
 
@@ -227,6 +233,42 @@ class MainActivity : AppCompatActivity() {
 
 
 
+    private val routeListLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val id = result.data?.getLongExtra("EXTRA_ROUTE_ID", -1L) ?: -1L
+            if (id != -1L) {
+                // Find route from DB by ID
+                lifecycleScope.launch {
+                    val entity = com.sofawander.app.data.AppDatabase.getInstance(this@MainActivity).routeDao().getRouteById(id)
+                    if (entity != null) {
+                        loadRoute(entity)
+                    }
+                }
+            }
+        }
+    }
+
+    private val favoriteListLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val lat = result.data?.getDoubleExtra("EXTRA_FAV_LAT", 0.0) ?: 0.0
+            val lng = result.data?.getDoubleExtra("EXTRA_FAV_LNG", 0.0) ?: 0.0
+            val id = result.data?.getLongExtra("EXTRA_FAV_ID", -1L) ?: -1L
+            val action = result.data?.getStringExtra("EXTRA_ACTION") ?: "SHOW_MAP"
+            if (lat != 0.0 && lng != 0.0) {
+                selectedFavoriteId = id
+                lastTappedPoint = RoutePoint(lat, lng)
+                val pt = org.maplibre.android.geometry.LatLng(lat, lng)
+                mapLibre?.animateCamera(
+                    CameraUpdateFactory.newLatLngZoom(pt, 15.5)
+                )
+                updateSelectedPointSource(pt)
+                if (action == "TELEPORT") {
+                    showTeleportDialog(pt)
+                }
+            }
+        }
+    }
+
     private fun formatDistance(meters: Double): String {
         return if (meters >= 1000) "%.2f km".format(meters / 1000.0)
         else "%.0f m".format(meters)
@@ -271,7 +313,6 @@ class MainActivity : AppCompatActivity() {
         setupMap()
         updateRouteStats()
 
-        observeRoutes()
         observeFavorites()
         observeHistory()
         bindActions()
@@ -305,10 +346,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnTeleport.setOnClickListener {
-            val point = mapLibre?.cameraPosition?.target
-            if (point != null) {
-                showTeleportDialog(point)
+            val point = if (hasSelectedPin && lastTappedPoint != null) {
+                org.maplibre.android.geometry.LatLng(lastTappedPoint!!.latitude, lastTappedPoint!!.longitude)
+            } else {
+                null
             }
+            showTeleportDialog(point)
         }
 
         binding.btnSearch.setOnClickListener {
@@ -323,7 +366,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnFavorites.setOnClickListener {
-            showFavoritesDialog()
+            favoriteListLauncher.launch(Intent(this, com.sofawander.app.ui.FavoriteListActivity::class.java))
         }
 
         binding.btnWalkMenu.setOnClickListener {
@@ -331,16 +374,21 @@ class MainActivity : AppCompatActivity() {
             binding.layoutWalkControls.visibility = if (visible) View.GONE else View.VISIBLE
         }
 
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        
         binding.btnWalkSpeed.setOnClickListener {
-            applySpeedPreset(5.0)
+            val speed = prefs.getString("pref_speed_walk", "9.0")?.toDoubleOrNull() ?: 9.0
+            applySpeedPreset(speed, "walk")
             binding.layoutWalkControls.visibility = View.GONE
         }
         binding.btnJogSpeed.setOnClickListener {
-            applySpeedPreset(9.0)
+            val speed = prefs.getString("pref_speed_jog", "14.4")?.toDoubleOrNull() ?: 14.4
+            applySpeedPreset(speed, "jog")
             binding.layoutWalkControls.visibility = View.GONE
         }
         binding.btnRunSpeed.setOnClickListener {
-            applySpeedPreset(15.0)
+            val speed = prefs.getString("pref_speed_drive", "50.0")?.toDoubleOrNull() ?: 50.0
+            applySpeedPreset(speed, "drive")
             binding.layoutWalkControls.visibility = View.GONE
         }
 
@@ -352,8 +400,19 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        binding.btnPlaybackPause.setOnClickListener {
+            val intent = Intent(this, MockLocationService::class.java).apply {
+                action = MockLocationService.ACTION_PAUSE_ROUTE
+            }
+            startService(intent)
+        }
+
+        binding.btnPlaybackStop.setOnClickListener {
+            stopRoutePlayback()
+        }
+
         binding.buttonLoadRoute.setOnClickListener {
-            openDocumentLauncher.launch(arrayOf("application/gpx+xml", "application/vnd.google-earth.kml+xml", "application/octet-stream", "text/xml", "*/*"))
+            routeListLauncher.launch(Intent(this, com.sofawander.app.ui.RouteListActivity::class.java))
         }
 
         binding.buttonSaveRoute.setOnClickListener {
@@ -413,9 +472,14 @@ class MainActivity : AppCompatActivity() {
             historyLauncher.launch(Intent(this, com.sofawander.app.ui.HistoryActivity::class.java))
         }
 
+        binding.menuRouteList.setOnClickListener {
+            binding.drawerLayout.close()
+            routeListLauncher.launch(Intent(this, com.sofawander.app.ui.RouteListActivity::class.java))
+        }
+
         binding.menuFavorites.setOnClickListener {
             binding.drawerLayout.close()
-            showFavoritesDialog()
+            favoriteListLauncher.launch(Intent(this, com.sofawander.app.ui.FavoriteListActivity::class.java))
         }
 
         binding.menuDevOptions.setOnClickListener {
@@ -423,7 +487,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
             } catch (e: Exception) {
-                Toast.makeText(this, "無法開啟開發人員選項", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, R.string.error_dev_options, Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -670,8 +734,10 @@ class MainActivity : AppCompatActivity() {
         val style = map.style ?: return
         val source = style.getSourceAs<GeoJsonSource>(SOURCE_ID_SELECTED) ?: return
         if (latLng == null) {
+            hasSelectedPin = false
             source.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(arrayOf()))
         } else {
+            hasSelectedPin = true
             lastTappedPoint = RoutePoint(latLng.latitude, latLng.longitude)
             source.setGeoJson(org.maplibre.geojson.Feature.fromGeometry(Point.fromLngLat(latLng.longitude, latLng.latitude)))
         }
@@ -713,8 +779,36 @@ class MainActivity : AppCompatActivity() {
         val view = layoutInflater.inflate(R.layout.dialog_teleport, null)
         val editCoords = view.findViewById<android.widget.EditText>(R.id.editCoords)
         
-        if (initialLatLng != null) {
-            editCoords.setText("%.6f, %.6f".format(initialLatLng.latitude, initialLatLng.longitude))
+        var defaultLat = initialLatLng?.latitude
+        var defaultLng = initialLatLng?.longitude
+        
+        if (defaultLat == null || defaultLng == null) {
+            defaultLat = currentMockLat
+            defaultLng = currentMockLng
+            
+            if (defaultLat == 0.0) {
+                val mapLoc = mapLibre?.locationComponent?.lastKnownLocation
+                if (mapLoc != null) {
+                    defaultLat = mapLoc.latitude
+                    defaultLng = mapLoc.longitude
+                }
+            }
+            
+            if (defaultLat == 0.0) {
+                try {
+                    val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                    val lastKnown = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                                 ?: lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                    if (lastKnown != null) {
+                        defaultLat = lastKnown.latitude
+                        defaultLng = lastKnown.longitude
+                    }
+                } catch (_: SecurityException) {}
+            }
+        }
+        
+        if (defaultLat != null && defaultLng != null && defaultLat != 0.0) {
+            editCoords.setText("%.6f, %.6f".format(defaultLat, defaultLng))
         }
 
         val textDistanceStatus = view.findViewById<android.widget.TextView>(R.id.textDistanceStatus)
@@ -723,6 +817,22 @@ class MainActivity : AppCompatActivity() {
         val checkWalkMode = view.findViewById<android.widget.CheckBox>(R.id.checkWalkMode)
         val btnCancel = view.findViewById<android.widget.Button>(R.id.btnCancel)
         val btnTeleportAction = view.findViewById<android.widget.Button>(R.id.btnTeleportAction)
+        val btnTeleportAddFavorite = view.findViewById<android.widget.ImageButton>(R.id.btnTeleportAddFavorite)
+
+        btnTeleportAddFavorite.setOnClickListener {
+            val raw = editCoords.text.toString()
+            val parts = raw.split(",")
+            if (parts.size >= 2) {
+                val targetLat = parts[0].trim().toDoubleOrNull()
+                val targetLng = parts[1].trim().toDoubleOrNull()
+                if (targetLat != null && targetLng != null) {
+                    lastTappedPoint = RoutePoint(targetLat, targetLng)
+                    addFavorite()
+                    return@setOnClickListener
+                }
+            }
+            Toast.makeText(this@MainActivity, R.string.error_invalid_coords, Toast.LENGTH_SHORT).show()
+        }
 
         val dialog = android.app.AlertDialog.Builder(this)
             .setView(view)
@@ -767,7 +877,19 @@ class MainActivity : AppCompatActivity() {
                         if (startLat != 0.0) {
                             val dist = calculateDistance(startLat, startLng, targetLat, targetLng)
                             val cooldown = calculateCooldown(dist)
-                            textDistanceStatus.text = "Distance: %s - Cooldown: %ds".format(formatDistance(dist), cooldown)
+                            
+                            val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                            val activeMode = prefs.getString("pref_active_speed_mode", "walk") ?: "walk"
+                            val speedKmh = when (activeMode) {
+                                "jog" -> prefs.getString("pref_speed_jog", "14.4")?.toDoubleOrNull() ?: 14.4
+                                "drive" -> prefs.getString("pref_speed_drive", "50.0")?.toDoubleOrNull() ?: 50.0
+                                else -> prefs.getString("pref_speed_walk", "9.0")?.toDoubleOrNull() ?: 9.0
+                            }
+                            val speedMps = speedKmh / 3.6
+                            val etaSeconds = if (speedMps > 0) (dist / speedMps).toLong() else 0L
+                            val etaText = formatDuration(etaSeconds * 1000)
+                            
+                            textDistanceStatus.text = "Distance: %s - Cooldown: %ds - ETA: %s".format(formatDistance(dist), cooldown, etaText)
                         } else {
                             textDistanceStatus.text = "Distance: Unknown - Click map first"
                         }
@@ -802,25 +924,36 @@ class MainActivity : AppCompatActivity() {
                 val lat = parts[0].trim().toDoubleOrNull()
                 val lng = parts[1].trim().toDoubleOrNull()
                 if (lat != null && lng != null) {
+                    var startLat = currentMockLat
+                    var startLng = currentMockLng
+                    if (startLat == 0.0) {
+                        val mapLoc = mapLibre?.locationComponent?.lastKnownLocation
+                        if (mapLoc != null) {
+                            startLat = mapLoc.latitude
+                            startLng = mapLoc.longitude
+                        }
+                    }
+
+                    if (startLat != 0.0) {
+                        routePoints.clear()
+                        routePoints.add(RoutePoint(startLat, startLng))
+                        routePoints.add(RoutePoint(lat, lng))
+                        updateRouteLine()
+                        updateRouteStats()
+                    }
+
                     val intent = Intent(this@MainActivity, MockLocationService::class.java).apply {
                         action = MockLocationService.ACTION_TELEPORT
                         putExtra(MockLocationService.EXTRA_LAT, lat)
                         putExtra(MockLocationService.EXTRA_LNG, lng)
                         putExtra(MockLocationService.EXTRA_WALK_MODE, checkWalkMode.isChecked)
+                        putExtra("extra_start_lat", startLat)
+                        putExtra("extra_start_lng", startLng)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         startForegroundService(intent)
                     } else {
                         startService(intent)
-                    }
-
-                    // 將跳轉的軌跡加入 routePoints 以繪製路徑
-                    if (currentMockLat != 0.0) {
-                        routePoints.clear()
-                        routePoints.add(RoutePoint(currentMockLat, currentMockLng))
-                        routePoints.add(RoutePoint(lat, lng))
-                        updateRouteLine()
-                        updateRouteStats()
                     }
 
                     mapLibre?.animateCamera(
@@ -1082,7 +1215,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateRouteStats() {
         if (routePoints.size < 2) {
-            binding.textRouteStats.text = "📍 ${routePoints.size} 點 | 📏 0 m"
+            binding.textRouteStats.text = getString(R.string.route_stats_empty, routePoints.size)
             return
         }
         var totalDist = 0.0
@@ -1094,13 +1227,14 @@ class MainActivity : AppCompatActivity() {
         }
         
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
-        val speedWalk = prefs.getString("pref_speed_walk", "9.0")?.toDoubleOrNull() ?: 9.0
-        val speedMps = speedWalk / 3.6
+        val defaultWalk = prefs.getString("pref_speed_walk", "9.0") ?: "9.0"
+        val activeSpeed = prefs.getString("pref_active_speed", defaultWalk)?.toDoubleOrNull() ?: 9.0
+        val speedMps = activeSpeed / 3.6
         
         val estSeconds = totalDist / speedMps
         val distStr = if (totalDist >= 1000) "%.2f km".format(totalDist / 1000.0) else "%.0f m".format(totalDist)
         val timeStr = formatDuration((estSeconds * 1000).toLong())
-        binding.textRouteStats.text = "📍 ${routePoints.size} 點 | 📏 $distStr | ⏱ ~$timeStr | %.1f km/h".format(speedWalk)
+        binding.textRouteStats.text = getString(R.string.route_stats_format, routePoints.size, distStr, timeStr, activeSpeed)
     }
 
     private fun startRoutePlayback() {
@@ -1111,7 +1245,8 @@ class MainActivity : AppCompatActivity() {
 
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
         
-        val speedWalk = prefs.getString("pref_speed_walk", "9.0")?.toDoubleOrNull() ?: 9.0
+        val defaultWalk = prefs.getString("pref_speed_walk", "9.0") ?: "9.0"
+        val activeSpeed = prefs.getString("pref_active_speed", defaultWalk)?.toDoubleOrNull() ?: 9.0
         val pauseShort = prefs.getString("pref_pause_short", "5")?.toDoubleOrNull() ?: 5.0
         
         val randomSpeed = prefs.getBoolean("pref_random_speed", true)
@@ -1125,8 +1260,8 @@ class MainActivity : AppCompatActivity() {
             action = MockLocationService.ACTION_START_ROUTE
             putExtra(MockLocationService.EXTRA_ROUTE_JSON, RouteJson.toJson(routePoints))
             
-            putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, speedWalk * 0.9)
-            putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, speedWalk * 1.1)
+            putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, activeSpeed * 0.9)
+            putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, activeSpeed * 1.1)
             putExtra(MockLocationService.EXTRA_PAUSE_MIN_SEC, pauseShort)
             putExtra(MockLocationService.EXTRA_PAUSE_MAX_SEC, pauseShort * 1.5)
             
@@ -1193,6 +1328,11 @@ class MainActivity : AppCompatActivity() {
             IntentFilter(MockLocationService.ACTION_ROUTE_UPDATED),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
+        // Restore walk menu icon
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        val savedMode = prefs.getString("pref_active_speed_mode", "walk") ?: "walk"
+        updateWalkMenuIcon(savedMode)
+        
         syncStatusFromPrefs()
         if (!isLocationEnabled()) {
             binding.textStatus.setText(R.string.status_error)
@@ -1203,6 +1343,16 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         mapView.onResume()
+        
+        // Sync the current active mode's speed from SharedPreferences
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        val activeMode = prefs.getString("pref_active_speed_mode", "walk") ?: "walk"
+        val newSpeed = when (activeMode) {
+            "jog" -> prefs.getString("pref_speed_jog", "14.4")?.toDoubleOrNull() ?: 14.4
+            "drive" -> prefs.getString("pref_speed_drive", "50.0")?.toDoubleOrNull() ?: 50.0
+            else -> prefs.getString("pref_speed_walk", "9.0")?.toDoubleOrNull() ?: 9.0
+        }
+        applySpeedPreset(newSpeed, activeMode, showToast = false)
     }
 
     override fun onPause() {
@@ -1300,7 +1450,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadRoute(entity: RouteEntity) {
+    private fun loadRoute(entity: com.sofawander.app.data.RouteEntity) {
         val points = RouteJson.fromJson(entity.pointsJson)
         if (points.isNotEmpty()) {
             routePoints.clear()
@@ -1309,21 +1459,8 @@ class MainActivity : AppCompatActivity() {
             updateRouteLine()
             updateRouteStats()
             binding.layoutRouteEditor.visibility = View.VISIBLE
+            binding.buttonStartRoute.text = getString(R.string.button_start)
             Toast.makeText(this, "Loaded: ${entity.name}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun observeRoutes() {
-        AppDatabase.getInstance(this).routeDao().getAllRoutes().asLiveData().observe(this) { routes ->
-            val items = routes.map {
-                com.sofawander.app.ui.RouteItem(
-                    id = it.id,
-                    name = it.name,
-                    points = RouteJson.fromJson(it.pointsJson),
-                    createdAt = it.createdAt
-                )
-            }
-            adapter.submitList(items)
         }
     }
 
@@ -1361,20 +1498,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showFavoritesDialog() {
-        val dialog = FavoriteListDialog(favoriteAdapter) { item ->
-            selectedFavoriteId = item.id
-            lastTappedPoint = RoutePoint(item.lat, item.lng)
-            mapLibre?.animateCamera(
-                CameraUpdateFactory.newLatLngZoom(
-                    org.maplibre.android.geometry.LatLng(item.lat, item.lng),
-                    15.5
-                )
-            )
-        }
-        dialog.show(supportFragmentManager, "favorites")
-    }
-
     private fun showRunDetails(item: RunHistoryItem) {
         // Implement logic to show run details or replay
         android.app.AlertDialog.Builder(this)
@@ -1387,11 +1510,37 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun applySpeedPreset(kmh: Double) {
+    private fun applySpeedPreset(kmh: Double, mode: String, showToast: Boolean = true) {
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
-        prefs.edit().putString("pref_speed_walk", kmh.toString()).apply()
+        prefs.edit()
+            .putString("pref_active_speed", kmh.toString())
+            .putString("pref_active_speed_mode", mode)
+            .apply()
+        updateWalkMenuIcon(mode)
         updateRouteStats()
-        Toast.makeText(this, "Speed set to $kmh km/h", Toast.LENGTH_SHORT).show()
+        
+        if (isRouteRunning) {
+            val intent = Intent(this, MockLocationService::class.java).apply {
+                action = MockLocationService.ACTION_UPDATE_SPEED
+                putExtra(MockLocationService.EXTRA_SPEED_MIN_KMH, kmh * 0.9)
+                putExtra(MockLocationService.EXTRA_SPEED_MAX_KMH, kmh * 1.1)
+            }
+            startService(intent)
+        }
+        
+        if (showToast) {
+            Toast.makeText(this, "Speed set to $kmh km/h", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun updateWalkMenuIcon(mode: String) {
+        val iconResId = when (mode) {
+            "walk" -> R.drawable.ic_directions_walk
+            "jog" -> R.drawable.ic_directions_run
+            "drive" -> R.drawable.ic_drive
+            else -> R.drawable.ic_directions_walk
+        }
+        binding.btnWalkMenu.setImageResource(iconResId)
     }
 
     private fun ensurePermissionsAndStart() {
@@ -1496,7 +1645,7 @@ class MainActivity : AppCompatActivity() {
 
         // 2. 使用 Geocoder 搜尋地址
         if (!Geocoder.isPresent()) {
-            Toast.makeText(this, "Geocoder not available", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.error_geocoder_unavailable, Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -1511,11 +1660,11 @@ class MainActivity : AppCompatActivity() {
                 updateSelectedPointSource(point)
                 showTeleportDialog(point)
             } else {
-                Toast.makeText(this, "找不到該地點", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, R.string.error_location_not_found, Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             android.util.Log.e("MockApp", "Search error", e)
-            Toast.makeText(this, "搜尋出錯: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.error_search_failed, e.message), Toast.LENGTH_SHORT).show()
         }
     }
 
